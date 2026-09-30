@@ -1,0 +1,27 @@
+[project]
+name = "backtest-core"
+version = "0.1.0"
+description = "Shared research code for bar strategies (futures, ETFs, stocks, FX): statistics, pre-registration, bar loading, a vectorised single-position simulator, and the Zorro toolkit (export, run, parse, parity, robustness battery). Options research stays in Hephaestus."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "polars",
+]
+
+# Bar loading reads through store-core (BarStore / PriceStore), which is editable-installed next to this
+# library in each consumer's venv; it is imported lazily so the statistics work without it.
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["backtest_core*"]
