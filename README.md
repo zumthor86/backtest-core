@@ -24,7 +24,7 @@ Zorro is the engine from step 3 on. See `Hephaestus/.claude/skills/bar-backtest-
 | `backtest_core.bars` | `intraday(symbol, source, freq)` and `daily(...)` (one bar per session, 18:00 ET futures split) through `store_core.BarStore` (`BARS_DIR`) |
 | `backtest_core.sim` | `run(...)`: one position at a time from boolean entry / exit signals, fills at the signal close or the next open, costs split half and half; `cost_fraction` charges ticks + fees on the raw price |
 | `backtest_core.zorro.export` | `t6(symbol, source, freq, prices)` writes Zorro `.t6` history from the bar store (byte-identical to the old `to_t6.py` for ES, NQ, GC, CL); `factor_block` the lite-C roll table; `asset_row` |
-| `backtest_core.zorro.run` | `deploy(names)` copies scripts from `python/zorro/Strategy` (the source of truth) into Zorro; `run(script, *ints)` runs `Zorro.exe -run/-train ... -quiet` and raises if no fresh report appears (a compile error is otherwise silent) |
+| `backtest_core.zorro.run` | `deploy(names)` copies scripts from `zorro/Strategy` in this repo (the source of truth) into Zorro; `run(script, *ints)` runs `Zorro.exe -run/-train ... -quiet` and raises if no fresh report appears (a compile error is otherwise silent) |
 | `backtest_core.zorro.report` | Parses `Log/<Script>.txt` (Sharpe, profit factor, trades, drawdown, Monte Carlo table, sample cycles) and reads `_trd.csv` / `_pnl.csv` |
 | `backtest_core.zorro.parity` | `compare(zorro, python, keys, values, tol)` — trade-by-trade parity with only-Zorro / only-Python / value-mismatch rows |
 | `backtest_core.zorro.battery` | `run_battery(script)` runs `Robust.h` modes 0-7 (bar start moved x6, detrend, shuffled-price reality check, Monte Carlo, costs x2, inverted) and returns one table with default pass bars |
@@ -56,4 +56,4 @@ Installed editable into the Hephaestus venv (`pip install -e ../backtest-core`).
 
 - 2026-09-30 — Created: `stats`, `prereg`, `bars`, `sim`. Reproduces the ES / NQ futures dip-buy record exactly.
 - 2026-09-30 — Added the Zorro toolkit: `zorro.export`, `zorro.run`, `zorro.report`, `zorro.parity`, `zorro.battery`
-  (drives `python/zorro/Strategy/Robust.h`).
+  (drives `zorro/Strategy/Robust.h`).

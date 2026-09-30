@@ -5,8 +5,9 @@ import os
 from pathlib import Path
 
 ZORRO_DIR = Path(os.environ.get("ZORRO_DIR", "C:/Users/Christopher/Zorro"))
-# Source of truth for our lite-C scripts (tracked in the workspace root repo); deploy copies them into Zorro.
-SCRIPTS_DIR = Path(os.environ.get("ZORRO_SCRIPTS_DIR", "C:/Users/Christopher/Documents/python/zorro/Strategy"))
+# Source of truth for our lite-C scripts: backtest-core/zorro/Strategy; deploy copies them into Zorro.
+SCRIPTS_DIR = Path(os.environ.get("ZORRO_SCRIPTS_DIR",
+                                  str(Path(__file__).resolve().parents[3] / "zorro" / "Strategy")))
 
 
 def history_dir() -> Path:

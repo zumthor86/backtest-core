@@ -1,0 +1,5 @@
+Name,Price,Spread,RollLong,RollShort,PIP,PIPCost,MarginCost,Market,Multiplier,Commission,Symbol
+CL,100,0,0,0,0.0001,0.0001,-100,0,1,0,CL
+GC,2000,0,0,0,0.0001,0.0001,-100,0,1,0,GC
+ES,5000,0,0,0,0.0001,0.0001,-100,0,1,0,ES
+NQ,20000,0,0,0,0.0001,0.0001,-100,0,1,0,NQ
