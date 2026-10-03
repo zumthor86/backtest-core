@@ -59,3 +59,5 @@ Installed editable into the Hephaestus venv (`pip install -e ../backtest-core`).
   (drives `zorro/Strategy/Robust.h`).
 - 2026-10-03 — Added `NoiseAreaCore.h` + `NoiseAreaQQQ.c`: QQQ noise area with VWAP computed in the script
   (`marketVol`) and `Robust.h` wired in, so the shuffled-price check applies. `NoiseArea.c` / `NoiseAreaFull.c` unchanged.
+- 2026-10-04 — Added `NightHoldCore.h` + `NightHoldNQ.c`: an index future held 16:00 -> 09:30 ET only, with `Robust.h` and a
+  `-d HOLDOUT` window. Matches `Hephaestus/backtests/nq_night_hold/night.py` trade for trade; failed its battery.
