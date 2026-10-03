@@ -57,3 +57,5 @@ Installed editable into the Hephaestus venv (`pip install -e ../backtest-core`).
 - 2026-09-30 — Created: `stats`, `prereg`, `bars`, `sim`. Reproduces the ES / NQ futures dip-buy record exactly.
 - 2026-09-30 — Added the Zorro toolkit: `zorro.export`, `zorro.run`, `zorro.report`, `zorro.parity`, `zorro.battery`
   (drives `zorro/Strategy/Robust.h`).
+- 2026-10-03 — Added `NoiseAreaCore.h` + `NoiseAreaQQQ.c`: QQQ noise area with VWAP computed in the script
+  (`marketVol`) and `Robust.h` wired in, so the shuffled-price check applies. `NoiseArea.c` / `NoiseAreaFull.c` unchanged.

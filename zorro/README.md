@@ -12,6 +12,7 @@ scripts from here into Zorro before a run. Edit here, never in Zorro's folder.
 | `BreakCore.h`, `BreakGC.c`, `BreakES.c` | Slow-approach break of old zigzag levels (causal variant C) | `.../break_parity.py` (823/823, 866/866 identical) |
 | `NoiseArea.c` | QQQ noise area, in-sample window (parity artefact — do not edit) | `Hephaestus/backtests/qqq_noise_area/` |
 | `NoiseAreaFull.c` | The same run to 2026-09 for the portfolio | — |
+| `NoiseAreaCore.h`, `NoiseAreaQQQ.c` | The same rules with VWAP computed in the script (needs Zorro S); uses `Robust.h` | `Hephaestus/backtests/qqq_noise_area_zorro_battery/parity.py` (against `NoiseAreaFull.c`) |
 | `ZZFactors.h`, `NAFactors.h` | Generated roll / dividend factor tables (`backtest_core.zorro.export.factor_block`; `export_t6.py` for QQQ) | — |
 | `EhlersZZ.c`, `GapZZ.c`, `Workshop4ZZ.c` | Early experiments | — |
 
