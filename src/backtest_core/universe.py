@@ -22,6 +22,9 @@ import polars as pl
 IDENTITY_INDEX = "R3000"      # the index whose stays carry price codes and SEC numbers
 MIN_PRICED_NAMES = 1000       # a date is a trading day if at least this many names have a price
 AFTER_CLOSE_HOUR = 16         # New York; a notice stamped from here on is first tradable the next session
+SPIKE_FACTOR = 4.0            # a one-day price jump of this size (up or down) ...
+SPIKE_UNDONE = 2.0            # ... that is back within this factor of the prior price a day later is a bad tick
+BROKEN_STAY_DAYS = 3          # member-days above +-100% after which a stay's price file is not believed
 
 
 @dataclass
@@ -35,6 +38,7 @@ class Panel:
     has: np.ndarray           # a price today and on the previous trading day
     mem: np.ndarray           # index member that day (latest snapshot on or before it)
     weight: np.ndarray        # index weight in percent from that snapshot (NaN where not a member or not stated)
+    dropped: pl.DataFrame     # stays removed because their price file is broken
 
     @property
     def month_ends(self) -> np.ndarray:
@@ -110,14 +114,36 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
     codes = px["symbol"].unique().sort()
     by_code = np.full((len(cal), len(codes)), np.nan)
     by_code[cal.search_sorted(px["date"]).to_numpy(), codes.search_sorted(px["symbol"]).to_numpy()] = px["adjusted_close"].to_numpy()
+    by_code = drop_spikes(by_code)
     stays = stays.filter(pl.col("eodhd_code").is_in(codes.to_list()))
     ac = by_code[:, codes.search_sorted(stays["eodhd_code"]).to_numpy()]
     with np.errstate(invalid="ignore", divide="ignore"):
         ret = np.vstack([np.full((1, ac.shape[1]), np.nan), ac[1:] / ac[:-1] - 1])
     has = np.isfinite(ret)
+    ret = np.nan_to_num(ret)
     days = cal.to_numpy().astype("datetime64[D]")
     mem, weight = membership_matrix(days, members(index, db_url), stays)
-    return Panel(days=days, stays=stays, ac=ac, ret=np.nan_to_num(ret), has=has, mem=mem, weight=weight)
+    # A stay that still doubles in a day this often is a broken price file, not a stock (one code flips between
+    # two price scales 235 times). It is removed whole and named, never patched day by day.
+    broken = ((np.abs(ret) > 1.0) & mem).sum(axis=0) >= BROKEN_STAY_DAYS
+    keep = np.flatnonzero(~broken)
+    return Panel(days=days, stays=stays[keep], ac=ac[:, keep], ret=ret[:, keep], has=has[:, keep], mem=mem[:, keep],
+                 weight=weight[:, keep], dropped=stays[np.flatnonzero(broken)])
+
+
+def drop_spikes(prices: np.ndarray) -> np.ndarray:
+    """Blank a price that jumps by ``SPIKE_FACTOR`` or more and is undone the next day.
+
+    A print that leaves the neighbouring prices' scale for one day and comes straight back is a bad tick, and its
+    two returns (the jump and the reversal) would otherwise read as the largest moves in the panel. A jump that
+    holds the next day is a real move and is kept.
+    """
+    out = prices.copy()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        jump = np.abs(np.log(prices[1:-1] / prices[:-2])) > np.log(SPIKE_FACTOR)
+        undone = np.abs(np.log(prices[2:] / prices[:-2])) < np.log(SPIKE_UNDONE)
+    out[1:-1][jump & undone] = np.nan
+    return out
 
 
 def first_session(days: np.ndarray, filed_at_utc: pl.Series) -> tuple[np.ndarray, pl.Series]:
