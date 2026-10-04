@@ -19,13 +19,11 @@ from datetime import date
 import numpy as np
 import polars as pl
 
+from . import price_flags
+
 IDENTITY_INDEX = "R3000"      # the index whose stays carry price codes and SEC numbers
 MIN_PRICED_NAMES = 1000       # a date is a trading day if at least this many names have a price
 AFTER_CLOSE_HOUR = 16         # New York; a notice stamped from here on is first tradable the next session
-SPIKE_FACTOR = 4.0            # a one-day price jump of this size (up or down) ...
-SPIKE_UNDONE = 2.0            # ... that is back within this factor of the prior price a day later is a bad tick
-SCALE_BREAK_UP = 9.0          # a one-day return above +900% ...
-SCALE_BREAK_DOWN = -0.98      # ... or below -98% is a change of price scale in the file
 BROKEN_STAY_DAYS = 3         # member-days above +-100% after which a stay's price file is not believed
 
 
@@ -102,32 +100,19 @@ def membership_matrix(days: np.ndarray, snapshots: pl.DataFrame, stays: pl.DataF
 def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: str | None = None,
           db_url: str | None = None) -> Panel:
     """Daily prices and membership for every stay with a proven price code, from ``start``."""
-    from store_core import PriceStore  # lazy, as in ``bars``
-
+    prices_dir = prices_dir or os.environ["RESEARCH_PRICES_DIR"]
     stays = listings(db_url)
-    px = PriceStore(prices_dir or os.environ["RESEARCH_PRICES_DIR"]).read(start_date=start)
-    if px.is_empty():
-        raise LookupError("the research price store returned nothing; is RESEARCH_PRICES_DIR set?")
-    px = (px.filter((pl.col("adjusted_close") > 0) & (pl.col("close") > 0))
-            .select("symbol", pl.col("date").cast(pl.Date), "adjusted_close").unique(["symbol", "date"]))
-    counts = px.group_by("date").len().filter(pl.col("len") >= MIN_PRICED_NAMES)
-    cal = counts["date"].sort()
-    px = px.join(counts.select("date"), on="date")
-    codes = px["symbol"].unique().sort()
-    by_code = np.full((len(cal), len(codes)), np.nan)
-    by_code[cal.search_sorted(px["date"]).to_numpy(), codes.search_sorted(px["symbol"]).to_numpy()] = px["adjusted_close"].to_numpy()
-    by_code = drop_spikes(by_code)
-    stays = stays.filter(pl.col("eodhd_code").is_in(codes.to_list()))
-    ac = by_code[:, codes.search_sorted(stays["eodhd_code"]).to_numpy()]
+    days, codes, raw = price_matrix(prices_dir, start)
+    # Bad prices are named in the flags built beside the store (``price_flags``); the files are never edited.
+    by_code, ret_blank = price_flags.apply(raw, days, codes, price_flags.read(prices_dir, days[-1]))
+    stays = stays.filter(pl.col("eodhd_code").is_in(codes.tolist()))
+    cols = codes.searchsorted(stays["eodhd_code"].to_numpy())
+    ac, ret_blank = by_code[:, cols], ret_blank[:, cols]
     with np.errstate(invalid="ignore", divide="ignore"):
         ret = np.vstack([np.full((1, ac.shape[1]), np.nan), ac[1:] / ac[:-1] - 1])
-    # A price that moves to another scale and stays there (one file reads 639x in a day, with flat days either
-    # side) is a restated segment, not a return. The day is treated as having no price.
-    with np.errstate(invalid="ignore"):
-        ret[(ret > SCALE_BREAK_UP) | (ret < SCALE_BREAK_DOWN)] = np.nan
+    ret[ret_blank] = np.nan
     has = np.isfinite(ret)
     ret = np.nan_to_num(ret)
-    days = cal.to_numpy().astype("datetime64[D]")
     mem, weight = membership_matrix(days, members(index, db_url), stays)
     # A stay that still doubles in a day this often is a broken price file, not a stock (one code flips between
     # two price scales 235 times). It is removed whole and named, never patched day by day.
@@ -137,19 +122,23 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
                  weight=weight[:, keep], dropped=stays[np.flatnonzero(broken)])
 
 
-def drop_spikes(prices: np.ndarray) -> np.ndarray:
-    """Blank a price that jumps by ``SPIKE_FACTOR`` or more and is undone the next day.
+def price_matrix(prices_dir: str, start: date | str = "2006-01-01") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The research price store as it is: trading days, price codes (sorted), and adjusted closes, days by codes.
+    A trading day is a date on which at least ``MIN_PRICED_NAMES`` codes have a price."""
+    from store_core import PriceStore  # lazy, as in ``bars``
 
-    A print that leaves the neighbouring prices' scale for one day and comes straight back is a bad tick, and its
-    two returns (the jump and the reversal) would otherwise read as the largest moves in the panel. A jump that
-    holds the next day is a real move and is kept.
-    """
-    out = prices.copy()
-    with np.errstate(invalid="ignore", divide="ignore"):
-        jump = np.abs(np.log(prices[1:-1] / prices[:-2])) > np.log(SPIKE_FACTOR)
-        undone = np.abs(np.log(prices[2:] / prices[:-2])) < np.log(SPIKE_UNDONE)
-    out[1:-1][jump & undone] = np.nan
-    return out
+    px = PriceStore(prices_dir).read(start_date=start)
+    if px.is_empty():
+        raise LookupError("the research price store returned nothing; is RESEARCH_PRICES_DIR set?")
+    px = (px.filter((pl.col("adjusted_close") > 0) & (pl.col("close") > 0))
+            .select("symbol", pl.col("date").cast(pl.Date), "adjusted_close").unique(["symbol", "date"]))
+    counts = px.group_by("date").len().filter(pl.col("len") >= MIN_PRICED_NAMES)
+    cal = counts["date"].sort()
+    px = px.join(counts.select("date"), on="date")
+    codes = px["symbol"].unique().sort()
+    out = np.full((len(cal), len(codes)), np.nan)
+    out[cal.search_sorted(px["date"]).to_numpy(), codes.search_sorted(px["symbol"]).to_numpy()] = px["adjusted_close"].to_numpy()
+    return cal.to_numpy().astype("datetime64[D]"), codes.to_numpy(), out
 
 
 def first_session(days: np.ndarray, filed_at_utc: pl.Series) -> tuple[np.ndarray, pl.Series]:

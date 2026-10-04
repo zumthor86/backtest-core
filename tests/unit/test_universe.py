@@ -40,15 +40,6 @@ def test_a_reused_ticker_lands_in_the_stay_that_covers_the_snapshot_date():
     assert mem[1:, 2].all()               # the 2019-2020 company
 
 
-def test_a_one_day_spike_is_blanked_and_a_jump_that_holds_is_kept():
-    spike = [10.0, 10.1, 0.002, 10.2, 10.3]          # a bad tick: gone the next day
-    real = [10.0, 10.1, 45.0, 46.0, 44.0]            # a real move: still there
-    crash = [10.0, 10.1, 1.0, 1.1, 1.0]              # a real collapse: still there
-    out = universe.drop_spikes(np.array([spike, real, crash]).T)
-    assert np.isnan(out[2, 0]) and np.isfinite(out[[0, 1, 3, 4], 0]).all()
-    assert np.isfinite(out[:, 1]).all() and np.isfinite(out[:, 2]).all()
-
-
 def _stamps(*utc):
     return pl.Series([datetime(*t, tzinfo=timezone.utc) for t in utc]).cast(pl.Datetime("us", "UTC"))
 
