@@ -24,7 +24,9 @@ MIN_PRICED_NAMES = 1000       # a date is a trading day if at least this many na
 AFTER_CLOSE_HOUR = 16         # New York; a notice stamped from here on is first tradable the next session
 SPIKE_FACTOR = 4.0            # a one-day price jump of this size (up or down) ...
 SPIKE_UNDONE = 2.0            # ... that is back within this factor of the prior price a day later is a bad tick
-BROKEN_STAY_DAYS = 3          # member-days above +-100% after which a stay's price file is not believed
+SCALE_BREAK_UP = 9.0          # a one-day return above +900% ...
+SCALE_BREAK_DOWN = -0.98      # ... or below -98% is a change of price scale in the file
+BROKEN_STAY_DAYS = 3         # member-days above +-100% after which a stay's price file is not believed
 
 
 @dataclass
@@ -119,6 +121,10 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
     ac = by_code[:, codes.search_sorted(stays["eodhd_code"]).to_numpy()]
     with np.errstate(invalid="ignore", divide="ignore"):
         ret = np.vstack([np.full((1, ac.shape[1]), np.nan), ac[1:] / ac[:-1] - 1])
+    # A price that moves to another scale and stays there (one file reads 639x in a day, with flat days either
+    # side) is a restated segment, not a return. The day is treated as having no price.
+    with np.errstate(invalid="ignore"):
+        ret[(ret > SCALE_BREAK_UP) | (ret < SCALE_BREAK_DOWN)] = np.nan
     has = np.isfinite(ret)
     ret = np.nan_to_num(ret)
     days = cal.to_numpy().astype("datetime64[D]")

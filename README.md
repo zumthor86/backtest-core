@@ -22,6 +22,7 @@ Zorro is the engine from step 3 on. See `Hephaestus/.claude/skills/bar-backtest-
 | `backtest_core.stats` | `sharpe`, `iid_t`, `nw_t` (Newey-West), `block_t` (calendar-block clusters), `cagr`, `max_drawdown`, `vol_matched_diff`, `summary`, `halves`. Conventions match the frozen studies (population std, 252 days) |
 | `backtest_core.prereg` | `register` / `verify` a spec against a `sha256sum`-format ledger (`spec.sha256`); `spend_holdout` refuses a second run and refuses rules edited since registration |
 | `backtest_core.bars` | `intraday(symbol, source, freq)` and `daily(...)` (one bar per session, 18:00 ET futures split) through `store_core.BarStore` (`BARS_DIR`) |
+| `backtest_core.universe` | `panel(index)`: days x stays matrices (`ac`, `ret`, `has`, `mem`, `weight`) for Russell 3000 or S&P 500 members since 2007, delisted companies included; `earnings(panel)`: SEC earnings notices as (column, first session that could react). Needs `HERMES_DB_URL` and `RESEARCH_PRICES_DIR` |
 | `backtest_core.sim` | `run(...)`: one position at a time from boolean entry / exit signals, fills at the signal close or the next open, costs split half and half; `cost_fraction` charges ticks + fees on the raw price |
 | `backtest_core.zorro.export` | `t6(symbol, source, freq, prices)` writes Zorro `.t6` history from the bar store (byte-identical to the old `to_t6.py` for ES, NQ, GC, CL); `factor_block` the lite-C roll table; `asset_row` |
 | `backtest_core.zorro.run` | `deploy(names)` copies scripts from `zorro/Strategy` in this repo (the source of truth) into Zorro; `run(script, *ints)` runs `Zorro.exe -run/-train ... -quiet` and raises if no fresh report appears (a compile error is otherwise silent) |
@@ -61,3 +62,6 @@ Installed editable into the Hephaestus venv (`pip install -e ../backtest-core`).
   (`marketVol`) and `Robust.h` wired in, so the shuffled-price check applies. `NoiseArea.c` / `NoiseAreaFull.c` unchanged.
 - 2026-10-04 — Added `NightHoldCore.h` + `NightHoldNQ.c`: an index future held 16:00 -> 09:30 ET only, with `Robust.h` and a
   `-d HOLDOUT` window. Matches `Hephaestus/backtests/nq_night_hold/night.py` trade for trade; failed its battery.
+- 2026-10-04 — Added `universe`: `panel("R3000" | "SP500")` (daily matrices by stay, dead companies included, from
+  Hermes's member snapshots, `index_listing` and the research price store), `earnings(panel)` (SEC notices mapped to the
+  first session that could react), `members`, `listings`. Bad ticks are blanked and broken price files dropped by rule.
