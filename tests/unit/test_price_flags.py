@@ -25,7 +25,7 @@ def test_a_one_day_spike_is_flagged_and_a_jump_that_holds_is_not():
 
 def test_a_long_run_of_the_same_close_is_flagged_after_its_first_print_but_a_short_one_is_not():
     flat = [5.0, 6.0] + [7.0] * 10 + [8.0]           # ten sessions at 7.0: nine repeats flagged
-    short = [5.0, 6.0] + [7.0] * 4 + [8.0] * 8       # a quiet stock: runs of 4 and 8
+    short = [5.0, 6.0] + [7.0] * 4 + [8.0] * 7       # a quiet stock: runs of 4 and 7
     f, *_ = _flags(flat, short)
     s = f.filter(pl.col("reason") == "stale")
     assert s["code"].unique().to_list() == ["C0"] and s.height == 9
