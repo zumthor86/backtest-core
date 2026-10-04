@@ -143,7 +143,7 @@ def build(prices_dir: str | os.PathLike | None = None, start: str = "2006-01-01"
     from . import universe  # lazy: universe imports this module
 
     prices_dir = prices_dir or os.environ["RESEARCH_PRICES_DIR"]
-    days, codes, raw = universe.price_matrix(prices_dir, start)
+    days, codes, raw, _ = universe.price_matrix(prices_dir, start)
     flags = detect(days, codes.tolist(), raw)
     path = flags_path(prices_dir)
     path.parent.mkdir(parents=True, exist_ok=True)

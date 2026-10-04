@@ -24,7 +24,8 @@ from . import price_flags
 IDENTITY_INDEX = "R3000"      # the index whose stays carry price codes and SEC numbers
 MIN_PRICED_NAMES = 1000       # a date is a trading day if at least this many names have a price
 AFTER_CLOSE_HOUR = 16         # New York; a notice stamped from here on is first tradable the next session
-BROKEN_STAY_DAYS = 3         # member-days above +-100% after which a stay's price file is not believed
+OPEN_RANGE = (0.5, 2.0)       # an open outside this band around its own close is a bad print, not a price
+BROKEN_STAY_DAYS = 3        # member-days above +-100% after which a stay's price file is not believed
 
 
 @dataclass
@@ -34,6 +35,7 @@ class Panel:
     days: np.ndarray          # datetime64[D], trading days
     stays: pl.DataFrame       # one row per column: symbol, first_date, last_date, name, sector, eodhd_code, cik, sic_code
     ac: np.ndarray            # adjusted close (NaN where none)
+    op: np.ndarray            # adjusted open on the same scale as ``ac`` (NaN where there is no usable open)
     ret: np.ndarray           # close-to-close return on the adjusted close
     has: np.ndarray           # a price today and on the previous trading day
     mem: np.ndarray           # index member that day (latest snapshot on or before it)
@@ -102,12 +104,12 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
     """Daily prices and membership for every stay with a proven price code, from ``start``."""
     prices_dir = prices_dir or os.environ["RESEARCH_PRICES_DIR"]
     stays = listings(db_url)
-    days, codes, raw = price_matrix(prices_dir, start)
+    days, codes, raw, open_rel = price_matrix(prices_dir, start)
     # Bad prices are named in the flags built beside the store (``price_flags``); the files are never edited.
     by_code, ret_blank = price_flags.apply(raw, days, codes, price_flags.read(prices_dir, days[-1]))
     stays = stays.filter(pl.col("eodhd_code").is_in(codes.tolist()))
     cols = codes.searchsorted(stays["eodhd_code"].to_numpy())
-    ac, ret_blank = by_code[:, cols], ret_blank[:, cols]
+    ac, ret_blank, open_rel = by_code[:, cols], ret_blank[:, cols], open_rel[:, cols]
     with np.errstate(invalid="ignore", divide="ignore"):
         ret = np.vstack([np.full((1, ac.shape[1]), np.nan), ac[1:] / ac[:-1] - 1])
     ret[ret_blank] = np.nan
@@ -118,27 +120,33 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
     # two price scales 235 times). It is removed whole and named, never patched day by day.
     broken = ((np.abs(ret) > 1.0) & mem).sum(axis=0) >= BROKEN_STAY_DAYS
     keep = np.flatnonzero(~broken)
-    return Panel(days=days, stays=stays[keep], ac=ac[:, keep], ret=ret[:, keep], has=has[:, keep], mem=mem[:, keep],
-                 weight=weight[:, keep], dropped=stays[np.flatnonzero(broken)])
+    return Panel(days=days, stays=stays[keep], ac=ac[:, keep], op=(ac * open_rel)[:, keep], ret=ret[:, keep],
+                 has=has[:, keep], mem=mem[:, keep], weight=weight[:, keep], dropped=stays[np.flatnonzero(broken)])
 
 
-def price_matrix(prices_dir: str, start: date | str = "2006-01-01") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The research price store as it is: trading days, price codes (sorted), and adjusted closes, days by codes.
+def price_matrix(prices_dir: str, start: date | str = "2006-01-01") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The research price store as it is: trading days, price codes (sorted), adjusted closes, and each day's
+    open over its own close (NaN where the open is missing or outside ``OPEN_RANGE`` of the close), days by codes.
     A trading day is a date on which at least ``MIN_PRICED_NAMES`` codes have a price."""
     from store_core import PriceStore  # lazy, as in ``bars``
 
     px = PriceStore(prices_dir).read(start_date=start)
     if px.is_empty():
         raise LookupError("the research price store returned nothing; is RESEARCH_PRICES_DIR set?")
+    rel = pl.col("open") / pl.col("close")
     px = (px.filter((pl.col("adjusted_close") > 0) & (pl.col("close") > 0))
-            .select("symbol", pl.col("date").cast(pl.Date), "adjusted_close").unique(["symbol", "date"]))
+            .select("symbol", pl.col("date").cast(pl.Date), "adjusted_close",
+                    pl.when(rel.is_between(*OPEN_RANGE)).then(rel).otherwise(None).alias("open_rel"))
+            .unique(["symbol", "date"]))
     counts = px.group_by("date").len().filter(pl.col("len") >= MIN_PRICED_NAMES)
     cal = counts["date"].sort()
     px = px.join(counts.select("date"), on="date")
     codes = px["symbol"].unique().sort()
-    out = np.full((len(cal), len(codes)), np.nan)
-    out[cal.search_sorted(px["date"]).to_numpy(), codes.search_sorted(px["symbol"]).to_numpy()] = px["adjusted_close"].to_numpy()
-    return cal.to_numpy().astype("datetime64[D]"), codes.to_numpy(), out
+    out, open_rel = np.full((len(cal), len(codes)), np.nan), np.full((len(cal), len(codes)), np.nan)
+    ti, ci = cal.search_sorted(px["date"]).to_numpy(), codes.search_sorted(px["symbol"]).to_numpy()
+    out[ti, ci] = px["adjusted_close"].to_numpy()
+    open_rel[ti, ci] = px["open_rel"].fill_null(float("nan")).to_numpy()
+    return cal.to_numpy().astype("datetime64[D]"), codes.to_numpy(), out, open_rel
 
 
 def first_session(days: np.ndarray, filed_at_utc: pl.Series) -> tuple[np.ndarray, pl.Series]:
