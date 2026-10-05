@@ -25,6 +25,36 @@
 
 #include "ZZFactors.h"
 
+// -d LIVE (trade mode) trades ZZ_LIVE_LOTS whole contracts of the real contract behind ZZ_ASSET in
+//   History/AssetsLive.csv. The state (60 sessions of returns, then the zigzag) is rebuilt on every start from
+//   ZZ_LIVE_LOOKBACK bars: PRELOAD reads them from our .t6 history and the broker fills the days after it. The
+//   history is on the adjusted scale, which equals the traded contract's prices only since the last roll, so it
+//   must be exported again after every roll and the asset list must name the contract the history ends on.
+//   A sleeve always starts flat or with the trades Zorro resumes; it never opens a position the full-history run
+//   would be holding from before the start.
+// -d LIVETEST (test mode) runs that start on history: one year of data, the first ZZ_LIVE_LOOKBACK bars as
+//   lookback, then the backtest's own sizing and costs. Its events must equal the full run's
+//   (zigzag_zorro/warm_check.py).
+// SIM = simulated fills on the adjusted history: every test-mode run.
+#ifdef LIVETEST
+#define LIVE
+#define SIM
+#define ZZ_LOG ZZ_WARM_EVENTS
+#endif
+#ifndef LIVE
+#define SIM
+#define ZZ_LOG ZZ_EVENTS
+#endif
+#ifndef SIM
+#define ZZ_LOG ZZ_LIVE_EVENTS
+#endif
+#define ZZ_LIVE_LOOKBACK 180000    // about 130 sessions; the state locks on after about 65 (warm_check.py)
+// what an open trade needs after a restart, kept with the trade
+#define TV_SL TradeVar[0]
+#define TV_TARGET TradeVar[1]
+#define TV_TP TradeVar[2]
+#define TV_BARS TradeVar[3]
+
 #define VOL_N 60
 #define MAX_BARS 60000
 #define NOTIONAL 1000000
@@ -41,7 +71,10 @@
 void logEvent(int kind, var v1, var v2, var v3, var v4, var v5, var v6, var v7)
 {
 	if(!robustLogging()) return;
-	file_append(ZZ_EVENTS, strf("%.10f,%i,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g\n", wdate(0), kind, v1, v2, v3, v4, v5, v6, v7));
+#ifndef SIM
+	if(is(LOOKBACK)) return;
+#endif
+	file_append(ZZ_LOG, strf("%.10f,%i,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g\n", wdate(0), kind, v1, v2, v3, v4, v5, v6, v7));
 }
 
 // US Eastern time from UTC (DST rules from 2007): Zorro's own zone table is only documented to 2024.
@@ -111,8 +144,12 @@ void placeEntry(int dir, var factor)
 	Entry = RestE;                                   // stop entry at the confirmation level, moved every bar
 	EntryTime = 1000000;                             // rests until filled or cancelled by the script
 	Stop = 0; TakeProfit = 0;                        // set from the fill at the next close
+#ifdef SIM
 	Lots = (int)(NOTIONAL / RestE);                  // sized once, when the order is first placed
 	Commission = ZZ_TICK * factor * (1. + COMM_TICKS) * robustCostMult();
+#else
+	Lots = ZZ_LIVE_LOTS;                             // whole contracts; the broker charges the real cost
+#endif
 	if(dir > 0) enterLong(zzTMF); else enterShort(zzTMF);
 }
 
@@ -124,6 +161,11 @@ function run()
 	BarMode = 0;                // every bar in the history, no weekend or holiday skipping
 	LookBack = 0;
 	StartDate = 20100606;
+#ifdef LIVE
+	LookBack = ZZ_LIVE_LOOKBACK;
+	StartDate = 20250919;       // LIVETEST; trade mode starts now and ignores it
+#endif
+#ifdef SIM
 	EndDate = 20260919;
 	robustCapital(NOTIONAL);
 	assetList("AssetsZZ");
@@ -132,6 +174,14 @@ function run()
 	Fill = 1;                   // stops fill at the level or at the open when the bar gaps through it
 	Hedge = 2;                  // the reversal's exit and entry are separate orders on the same bar
 	setf(TradeMode, TR_FRC);    // no rounding of fills to the point size
+#else
+	set(PRELOAD);               // the lookback comes from our .t6 history, the broker fills the days after it
+	set(LOGFILE);
+	assetList("AssetsLive");
+	asset(ZZ_ASSET);
+	Hedge = 4;                  // IB keeps one net position (NFA): Zorro holds the exit and the entry as separate
+	                            // trades and sends the net
+#endif
 
 	int k;
 	if(is(INITRUN)) {
@@ -139,10 +189,12 @@ function run()
 		D = NO_D; RestD = NO_D; Seg1 = 0; Seg2 = 0; PivPrev = 0; DsigPrev = 1;
 		Avg3Cut = 2. - 0.67 / sqrt(3.);
 		for(k = 0; k < VOL_N; k++) RetSq[k] = 0;
+#ifdef SIM
 		if(robustLogging()) {
-			file_delete(ZZ_EVENTS);
-			file_append(ZZ_EVENTS, "ole_utc,type,a,b,c,d,e,f,g\n");
+			file_delete(ZZ_LOG);
+			file_append(ZZ_LOG, "ole_utc,type,a,b,c,d,e,f,g\n");
 		}
+#endif
 		return;                 // the first run comes before any prices are loaded
 	}
 
@@ -213,6 +265,16 @@ function run()
 			newDir = TradeDir;
 			PosBar = ZBar;
 			logEvent(3, TradeDir, TradePriceOpen, PosSL, PosTP, TradeLots, 0, 0);
+#ifndef SIM
+			TV_SL = PosSL; TV_TARGET = PosTarget; TV_TP = PosTP; TV_BARS = 0;
+		} else {
+			// open from an earlier bar, or resumed by Zorro after a restart: the script's own copy of its exits
+			// is gone after a restart, the trade's is not
+			TV_BARS += 1;
+			PosSL = TV_SL; PosTarget = TV_TARGET; PosTP = TV_TP;
+			PosBar = ZBar - (int)TV_BARS;
+			if(Pos == 0) newDir = TradeDir;
+#endif
 		}
 	}
 	if(newDir != 0) Pos = newDir;

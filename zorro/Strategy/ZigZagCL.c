@@ -5,6 +5,9 @@
 
 #define ZZ_ASSET "CL"
 #define ZZ_EVENTS "Log\\ZigZagCL_events.csv"
+#define ZZ_WARM_EVENTS "Log\\ZigZagCL_warm_events.csv"
+#define ZZ_LIVE_EVENTS "Log\\ZigZagCL_live_events.csv"
+#define ZZ_LIVE_LOTS 1
 #define ZZ_TICK 0.01           // $ per barrel
 #define ZZ_TICK_USD 10.        // $ per tick per contract
 #define ZZ_K 1.

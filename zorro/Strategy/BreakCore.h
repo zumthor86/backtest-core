@@ -25,6 +25,44 @@
 
 #include "ZZFactors.h"
 
+// Zorro takes one -d name per run, so the export to the end of the history is its own name.
+#ifdef STATE_LATEST
+#define STATE
+#endif
+
+// -d STATE (test mode) writes every touch of the full run (time, speed) to BK_STATE.
+// -d LIVE (trade mode) trades BK_LIVE_LOTS whole contracts of the real contract behind BK_ASSET in
+//   History/AssetsLive.csv. The zigzag, the levels and the armed stops are rebuilt on every start from
+//   BK_LIVE_LOOKBACK bars (PRELOAD reads them from our .t6 history, the broker fills the days after it). "Slow"
+//   is a rank against every touch since 2010, which no lookback Zorro can load reaches, so those speeds come
+//   from BK_STATE: each bar first takes the full run's touches up to that bar, and the sleeve's own touches
+//   count only after the file ends. The history is on the adjusted scale, which equals the traded contract's
+//   prices only since the last roll, so history and state must be exported again after every roll and the asset
+//   list must name the contract the history ends on. A sleeve always starts flat or with the trades Zorro
+//   resumes.
+// -d LIVETEST (test mode) runs that start on history: BK_STATE up to BK_STATE_CUT, BK_LIVE_LOOKBACK bars of
+//   lookback before 2025-09-19, then the backtest's own sizing and costs. Its events must equal the full run's
+//   (zigzag_zorro/break_live_check.py).
+// SIM = simulated fills on the adjusted history: every test-mode run.
+#ifdef LIVETEST
+#define LIVE
+#define SIM
+#define BK_LOG BK_WARM_EVENTS
+#endif
+#ifndef LIVE
+#define SIM
+#define BK_LOG BK_EVENTS
+#endif
+#ifndef SIM
+#define BK_LOG BK_LIVE_EVENTS
+#endif
+#define BK_LIVE_LOOKBACK 250000    // about 180 sessions: 60 for the threshold, the zigzag, then 20-session levels
+#define BK_STATE_CUT 45919.        // LIVETEST: 2025-09-19 00:00 UTC, as an OLE date
+#define HALF_MIN (0.5 / 1440)
+// what an open trade needs after a restart, kept with the trade
+#define TV_TP TradeVar[0]
+#define TV_SESS TradeVar[1]
+
 #define VOL_N 60
 #define NOTIONAL 1000000
 #define NO_D 1e30
@@ -45,7 +83,10 @@
 void logEvent(int kind, var v1, var v2, var v3, var v4, var v5, var v6, var v7)
 {
 	if(!robustLogging()) return;
-	file_append(BK_EVENTS, strf("%.10f,%i,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g\n", wdate(0), kind, v1, v2, v3, v4, v5, v6, v7));
+#ifndef SIM
+	if(is(LOOKBACK)) return;
+#endif
+	file_append(BK_LOG, strf("%.10f,%i,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g\n", wdate(0), kind, v1, v2, v3, v4, v5, v6, v7));
 }
 
 int dowOle(var t) { return ((int)floor(t) + 6) % 7; }          // 0 = Sunday
@@ -149,6 +190,45 @@ void insertSeen(var x)
 	Seen[k] = x; NSeen++;
 }
 
+#ifdef LIVE
+// the full run's touches, in time order: "ole date,speed" per line
+var StT[MAXP]; var StV[MAXP]; int NSt, StI;
+var StEnd;
+
+void loadTouches()
+{
+	string txt = file_content(BK_STATE);
+	string line;
+	string comma;
+	NSt = 0; StI = 0; StEnd = 0;
+	if(!txt) { printf("\n%s missing: export it with -d STATE", BK_STATE); return; }
+	line = strtok(txt, "\n");
+	while(line && NSt < MAXP) {
+		comma = strchr(line, ',');
+		if(comma) {
+#ifdef LIVETEST
+			if(atof(line) >= BK_STATE_CUT) break;
+#endif
+			StT[NSt] = atof(line); StV[NSt] = atof(comma + 1); NSt++;
+		}
+		line = strtok(0, "\n");
+	}
+	if(NSt > 0) StEnd = StT[NSt - 1];
+	printf("\n%s: %i touches to %i", BK_STATE, NSt, ymd(StEnd));
+}
+
+// the full run's touches on earlier bars
+void seenBefore(var t) { while(StI < NSt && StT[StI] < t - HALF_MIN) { insertSeen(StV[StI]); StI++; } }
+
+// A touch on this bar. While the state file covers the bar, the file's touch counts, not the sleeve's own: the
+// sleeve's zigzag is not locked on yet early in the lookback.
+void seenTouch(var t, var sp)
+{
+	if(t > StEnd + HALF_MIN) insertSeen(sp);
+	else if(StI < NSt && StT[StI] < t + HALF_MIN) { insertSeen(StV[StI]); StI++; }
+}
+#endif
+
 var tickLog(var c, var factor) { return log(1. + BK_TICK / (exp(c) / factor)); }
 
 function run()
@@ -159,7 +239,15 @@ function run()
 	BarMode = 0;
 	LookBack = 0;
 	StartDate = 20100606;
+#ifdef LIVE
+	LookBack = BK_LIVE_LOOKBACK;
+	StartDate = 20250919;       // LIVETEST; trade mode starts now and ignores it
+#endif
+#ifdef SIM
 	EndDate = 20260919;
+#ifdef STATE_LATEST
+	EndDate = Command[1];        // a state export for a live start runs to the end of the history
+#endif
 	robustCapital(NOTIONAL);
 	assetList("AssetsZZ");
 	asset(BK_ASSET);
@@ -167,16 +255,32 @@ function run()
 	Fill = 1;
 	Hedge = 2;
 	setf(TradeMode, TR_FRC);
+#else
+	set(PRELOAD);               // the lookback comes from our .t6 history, the broker fills the days after it
+	set(LOGFILE);
+	assetList("AssetsLive");
+	asset(BK_ASSET);
+	Hedge = 4;                  // IB keeps one net position (NFA): Zorro holds a long and a short as separate
+	                            // trades and sends the net
+#endif
 
 	int k;
 	if(is(INITRUN)) {
 		ZBar = 0; ZState = 0; NP = 0; FI = 0; SessN = 0; HavePrevSess = 0; NR = 0; NB = 0; BarsInSess = 0;
 		D = NO_D; BB = 0; NW = 0; NA = 0; NSeen = 0; Pos = 0; TimeExit = 0;
 		PendP[0] = PendP[1] = -1;
+#ifdef LIVE
+		loadTouches();
+#endif
+#ifdef STATE
+		file_delete(BK_STATE);
+#endif
+#ifdef SIM
 		if(robustLogging()) {
-			file_delete(BK_EVENTS);
-			file_append(BK_EVENTS, "ole_utc,type,a,b,c,d,e,f,g\n");
+			file_delete(BK_LOG);
+			file_append(BK_LOG, "ole_utc,type,a,b,c,d,e,f,g\n");
 		}
+#endif
 		return;
 	}
 
@@ -192,8 +296,10 @@ function run()
 
 	// --- 1. session: a new session's threshold and bar baseline apply from its first bar ---
 	var sess = floor(etFromUtc(wdate(0)) - 0.5 / 1440 + 0.25);
+	int newSess = 0;
 	if(ZBar == 0) CurSess = sess;
 	else if(sess != CurSess) {
+		newSess = 1;
 		if(HavePrevSess) { var r = LastLogC - PrevSessC; RetSq[NR % VOL_N] = r * r; NR++; }
 		PrevSessC = LastLogC; HavePrevSess = 1;
 		SessBars[NB % VOL_N] = BarsInSess; NB++; BarsInSess = 0;
@@ -241,6 +347,16 @@ function run()
 			newDir = TradeDir; filledP = PendP[side];
 			PosSessEnd = SessN + WINDOW;
 			logEvent(3, TradeDir, TradePriceOpen, TradeStopLimit, PosTP, TradeLots, filledP, 0);
+#ifndef SIM
+			TV_TP = PosTP; TV_SESS = 0;
+		} else {
+			// open from an earlier bar, or resumed by Zorro after a restart: the script's own copy of the target
+			// and of the time limit is gone after a restart, the trade's is not
+			if(newSess) TV_SESS += 1;
+			PosTP = TV_TP;
+			PosSessEnd = SessN + WINDOW - (int)TV_SESS;
+			if(Pos == 0) newDir = TradeDir;
+#endif
 		}
 	}
 	if(nOpen > 1) {                                    // a long and a short stop both traded in one bar
@@ -271,6 +387,9 @@ function run()
 	// --- 5. touches of live levels on this bar ---
 	keep = 0;
 	int w;
+#ifdef LIVE
+	seenBefore(wdate(0));
+#endif
 	for(w = 0; w < NW; w++) {
 		int j = W[w];
 		if(SessN > PivS[j] + WINDOW) continue;         // level expired
@@ -278,7 +397,14 @@ function run()
 		if(!ifelse(hiL, lh >= PivV[j], ll <= PivV[j])) { W[keep++] = j; continue; }
 		var sp = speedAt(j, ZBar);
 		int ter = tercile(sp);
+#ifdef LIVE
+		seenTouch(wdate(0), sp);
+#else
 		insertSeen(sp);
+#endif
+#ifdef STATE
+		file_append(BK_STATE, strf("%.10f,%.12g\n", wdate(0), sp));
+#endif
 		logEvent(5, j, PivV[j], sp, ter, ZBar, 0, 0);
 		if(ter != 2 || j == filledP) continue;
 		// armed from this touch; a stop rested for it this bar keeps its price
@@ -337,8 +463,12 @@ function run()
 			Entry = f32(exp(bestS[s2]));
 			EntryTime = 1000000;
 			Stop = 0; TakeProfit = 0;
+#ifdef SIM
 			Lots = (int)(NOTIONAL / Entry);
 			Commission = BK_TICK * factor * (1. + COMM_TICKS) * robustCostMult();
+#else
+			Lots = BK_LIVE_LOTS;                 // whole contracts; the broker charges the real cost
+#endif
 			if(s2 == 0) enterLong(bkTMF); else enterShort(bkTMF);
 		}
 	}

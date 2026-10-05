@@ -3,6 +3,10 @@
 
 #define BK_ASSET "ES"
 #define BK_EVENTS "Log/BreakES_events.csv"
+#define BK_WARM_EVENTS "Log/BreakES_warm_events.csv"
+#define BK_LIVE_EVENTS "Log/BreakES_live_events.csv"
+#define BK_LIVE_LOTS 1
+#define BK_STATE "Data/BreakES_touches.csv"
 #define BK_TICK 0.25           // index points
 #define BK_TICK_USD 12.5       // $ per tick per contract
 #define BK_K 1.
