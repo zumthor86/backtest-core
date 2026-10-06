@@ -29,6 +29,27 @@
 #define DONE_IDX 385       // a session counts only if it has a bar starting 15:55 or later
 #define NOTIONAL 100000
 
+// -d LIVE (trade mode) trades QQQ shares on the paper account. The 14-session state is rebuilt on every start from
+//   NA_LIVE_LOOKBACK bars (16 sessions): PRELOAD reads them from our .t6 history and the broker fills the days after
+//   it. A sleeve starts flat. The dividend factor table ends with the history, so a new ex-dividend date needs the
+//   history and NAFactors.h exported again (export_t6.py) before it.
+// -d LIVETEST (test mode) runs the same start on history, with the backtest's costs and fills.
+#ifdef LIVETEST
+#define LIVE
+#define SIM
+#endif
+#ifndef LIVE
+#define SIM
+#endif
+#define NA_LIVE_LOOKBACK 6240
+// The last bar closes at 16:00 sharp, when the market has shut: a market order sent then waits for tomorrow's open
+// and the sleeve would hold overnight. Live flattens on the bar closing 15:59 instead.
+#ifdef LIVE
+#define NA_FLAT_IDX 388
+#else
+#define NA_FLAT_IDX 389
+#endif
+
 var Ring[5460];            // NBARS * LOOKBACK_SESSIONS: [minute index * 14 + session column]
 var Today[390];
 int Committed, LastIdx, StartOk, CurDate, Pos, FI;
@@ -69,7 +90,12 @@ function run()
 	LookBack = 0;              // the 14-session warm-up is handled below, not by Zorro's series
 	StartDate = NA_START;
 	EndDate = NA_END;
+#ifdef LIVE
+	LookBack = NA_LIVE_LOOKBACK;
+	StartDate = 20250101;      // LIVETEST; trade mode starts now and ignores it
+#endif
 	robustBars(0);
+#ifdef SIM
 	robustCapital(NOTIONAL);
 	assetList(NA_ASSETLIST);
 	asset(NA_ASSET);
@@ -77,16 +103,27 @@ function run()
 	Slippage = 0;
 	Commission = NA_COST * robustCostMult();
 	Fill = 3;                  // market orders fill at the next bar's open
+#else
+	set(PRELOAD);              // the lookback comes from our .t6 history, the broker fills the days after it
+	set(LOGFILE);
+	assetList("AssetsLive");
+	asset(NA_ASSET);
+	Hedge = 4;                 // IB keeps one net position (NFA): an exit and an entry on one bar are sent as the net
+#endif
 
 	int k;
 	if(is(INITRUN)) {
 		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0;
 		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0;
 		for(k = 0; k < 5460; k++) Ring[k] = 0;
+#ifdef SIM
 		if(robustLogging()) {
 			file_delete(NA_SIGNAL_LOG);
 			file_append(NA_SIGNAL_LOG, "ole_utc,action,price,upper,lower,vwap\n");
 		}
+#else
+		if(!file_length(NA_SIGNAL_LOG)) file_append(NA_SIGNAL_LOG, "ole_utc,action,price,upper,lower,vwap\n");
+#endif
 		return;                // the first run comes before any prices are loaded
 	}
 
@@ -166,7 +203,7 @@ function run()
 	}
 
 	// Flat at the 16:00 close, filled at this bar's close rather than tomorrow's open.
-	if(idx == NBARS - 1 && Pos != 0) {
+	if(idx == NA_FLAT_IDX && Pos != 0) {
 		Fill = 1;
 		if(Pos == 1) exitLong(); else exitShort();
 		Pos = 0;
