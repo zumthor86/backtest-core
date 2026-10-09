@@ -130,6 +130,9 @@ void loadState()
 }
 #endif
 
+#include "Heartbeat.h"
+#include "LiveRestart.h"
+
 function run()
 {
 	BarPeriod = 1440;
@@ -168,6 +171,7 @@ function run()
 	var rsiOut = robustParam(90, 70, 95, 5);
 
 	if(is(INITRUN)) {
+		liveRestart();
 		NBar = 0; FI = 0; InPos = 0; AU = 0; AD = 0; Stale = 0;
 #ifdef LIVE
 		loadState();
@@ -183,6 +187,7 @@ function run()
 #endif
 		return;
 	}
+	hbBar();
 	if(NBar >= MAXB) return;
 
 	var h = priceHigh(0);

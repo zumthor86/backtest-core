@@ -24,6 +24,8 @@
 // Sizing: 1 unit = 1 point of the adjusted price (History/AssetsZZ.csv); NOTIONAL / price units per trade.
 
 #include "ZZFactors.h"
+#include "Heartbeat.h"
+#include "LiveRestart.h"
 
 // Zorro takes one -d name per run, so the export to the end of the history is its own name.
 #ifdef STATE_LATEST
@@ -266,6 +268,7 @@ function run()
 
 	int k;
 	if(is(INITRUN)) {
+		liveRestart();
 		ZBar = 0; ZState = 0; NP = 0; FI = 0; SessN = 0; HavePrevSess = 0; NR = 0; NB = 0; BarsInSess = 0;
 		D = NO_D; BB = 0; NW = 0; NA = 0; NSeen = 0; Pos = 0; TimeExit = 0;
 		PendP[0] = PendP[1] = -1;
@@ -283,6 +286,7 @@ function run()
 #endif
 		return;
 	}
+	hbBar();
 
 	var o = priceOpen(0);
 	var h = priceHigh(0);

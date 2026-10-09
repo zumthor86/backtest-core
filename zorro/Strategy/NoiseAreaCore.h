@@ -82,6 +82,9 @@ var factorNow()
 	return NA_FV[FI];
 }
 
+#include "Heartbeat.h"
+#include "LiveRestart.h"
+
 function run()
 {
 	BarPeriod = 1;
@@ -113,6 +116,7 @@ function run()
 
 	int k;
 	if(is(INITRUN)) {
+		liveRestart();
 		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0;
 		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0;
 		for(k = 0; k < 5460; k++) Ring[k] = 0;
@@ -126,6 +130,7 @@ function run()
 #endif
 		return;                // the first run comes before any prices are loaded
 	}
+	hbBar();
 
 	var et = etFromUtc(wdate(0));                                        // bar CLOSE time, New York
 	int minuteOfDay = (int)floor((et - floor(et)) * 1440 + 0.5);

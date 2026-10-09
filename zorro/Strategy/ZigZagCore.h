@@ -24,6 +24,8 @@
 // dollar P&L is the research engine's return at 1x notional times NOTIONAL.
 
 #include "ZZFactors.h"
+#include "Heartbeat.h"
+#include "LiveRestart.h"
 
 // -d LIVE (trade mode) trades ZZ_LIVE_LOTS whole contracts of the real contract behind ZZ_ASSET in
 //   History/AssetsLive.csv. The state (60 sessions of returns, then the zigzag) is rebuilt on every start from
@@ -185,6 +187,7 @@ function run()
 
 	int k;
 	if(is(INITRUN)) {
+		liveRestart();
 		ZBar = 0; ZState = 0; NSig = 0; NSess = 0; HavePrevSess = 0; NR = 0; RestTake = 0; Pos = 0; FI = 0;
 		D = NO_D; RestD = NO_D; Seg1 = 0; Seg2 = 0; PivPrev = 0; DsigPrev = 1;
 		Avg3Cut = 2. - 0.67 / sqrt(3.);
@@ -197,6 +200,7 @@ function run()
 #endif
 		return;                 // the first run comes before any prices are loaded
 	}
+	hbBar();
 
 	var o = priceOpen(0);
 	var h = priceHigh(0);
