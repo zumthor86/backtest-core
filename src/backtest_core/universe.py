@@ -7,7 +7,7 @@ Everything is read from Hermes: member snapshots (``v_index_membership``), who e
 A column of a :class:`Panel` is one **stay**: an unbroken run of a ticker in the Russell 3000. A ticker is not a
 company (it is reused, and a delisted company has none), so nothing here is keyed by ticker alone.
 
-    P = universe.panel("R3000")          # or "SP500": the same columns, S&P 500 membership
+    P = universe.panel("R3000")          # or "R1000", "SP500_ETF", "SP500": the same columns, that index's membership
     E = universe.earnings(P)             # one row per notice: column k, first session i that could react
 """
 from __future__ import annotations
