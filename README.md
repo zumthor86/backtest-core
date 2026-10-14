@@ -28,6 +28,7 @@ Zorro is the engine from step 3 on. See `Hephaestus/.claude/skills/bar-backtest-
 | `backtest_core.events` | `flag_days`, `hold_flagged` (long on event days, one trade per run, row 117), `mark_to_mark` (entry mark before the event to the exit mark on it, row 111), `cohort_book` (overlapping cohorts held a fixed span), `welch_t`, `check_dates` (the move must be larger on event days) |
 | `backtest_core.futures_book` | `market(ses, close)` (returns, EWMA vol), `time_series_book` (each market on its own signal, mean over live markets, row 106), `cross_section_book` (ranked or signed across markets each month, 1/n each, row 114), `trailing_sign`, `ewma_sigma` |
 | `backtest_core.scoring` | `daily(days, net, gross, mask, sharpe_bar, t_bar)` and `per_trade(...)`: the numbers a register row prints and the pass against the pre-registered bars, in place of each study's copied `score()` |
+| `backtest_core.fidelity` | `compare(days, daily, pub_months, pub_monthly)`: our daily series on months against a published monthly series (correlation, beta, tracking error, means); `verdict(f, floor)` is "fit" or "uninformative" |
 | `backtest_core.sim` | `run(...)`: one position at a time from boolean entry / exit signals, fills at the signal close or the next open, costs split half and half; `cost_fraction` charges ticks + fees on the raw price |
 | `backtest_core.zorro.export` | `t6(symbol, source, freq, prices)` writes Zorro `.t6` history from the bar store (byte-identical to the old `to_t6.py` for ES, NQ, GC, CL); `factor_block` the lite-C roll table; `asset_row` |
 | `backtest_core.zorro.run` | `deploy(names)` copies scripts from `zorro/Strategy` in this repo (the source of truth) into Zorro; `run(script, *ints)` runs `Zorro.exe -run/-train ... -quiet` and raises if no fresh report appears (a compile error is otherwise silent) |
@@ -81,3 +82,5 @@ Installed editable into the Hephaestus venv (`pip install -e ../backtest-core`).
   markets) and `scoring` (the printed numbers and the pass, in place of each study's `score()`). New modules only;
   nothing existing changed. `tests/integration/test_reference_rows.py` reproduces register rows 106, 107, 110, 111,
   112, 114 and 117 to every printed digit. Built for the idea pipeline (`pythia`, plan M3).
+- 2026-10-14 — Added `fidelity` (`compare`, `to_monthly`, `verdict`): does a build track the published series of its
+  rule? New module only. The floor is set from data in `Hephaestus/backtests/fidelity_floor/` (plan M6).
