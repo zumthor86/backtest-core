@@ -337,7 +337,7 @@ function run()
 	int newDir = 0;
 	int filledP = -1;
 	for(open_trades) {
-		if(!TradeIsOpen) continue;
+		if(!TradeIsOpen || TradeIsPool) continue;      // a pool trade is Zorro's net at the broker, never the script's
 		nOpen++;
 		if(TradeStopLimit == 0) {
 			int side = ifelse(TradeIsLong, 0, 1);
@@ -365,7 +365,7 @@ function run()
 	}
 	if(nOpen > 1) {                                    // a long and a short stop both traded in one bar
 		logEvent(9, 1, nOpen, 0, 0, 0, 0, 0);
-		for(open_trades) if(TradeIsOpen && TradeIsShort) exitTrade(ThisTrade);
+		for(open_trades) if(TradeIsOpen && TradeIsShort && !TradeIsPool) exitTrade(ThisTrade);
 		if(newDir < 0) newDir = 0;
 	}
 	if(newDir != 0) Pos = newDir;
@@ -427,7 +427,7 @@ function run()
 
 	// --- 6. time exit at this bar's close ---
 	if(Pos != 0 && SessN > PosSessEnd) {
-		for(open_trades) if(TradeIsOpen) TradeCommission *= (0.5 + COMM_TICKS) / (1. + COMM_TICKS);
+		for(open_trades) if(TradeIsOpen && !TradeIsPool) TradeCommission *= (0.5 + COMM_TICKS) / (1. + COMM_TICKS);
 		if(Pos > 0) exitLong(); else exitShort();
 		Pos = 0;
 	}
@@ -455,7 +455,7 @@ function run()
 		}
 	}
 	int have[2]; have[0] = have[1] = 0;
-	for(open_trades) if(TradeIsPending) {
+	for(open_trades) if(TradeIsPending && !TradeIsPool) {
 		int ps = ifelse(TradeIsLong, 0, 1);
 		if(bestP[ps] >= 0 && !have[ps]) { TradeEntryLimit = f32(exp(bestS[ps])); have[ps] = 1; }
 		else exitTrade(ThisTrade);

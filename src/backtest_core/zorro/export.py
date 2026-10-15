@@ -51,6 +51,39 @@ def t6(symbol: str, source: str = "databento", freq: str = "1m", prices: str = "
     return written
 
 
+def t6_daily(symbol: str, daily: pl.DataFrame, out_dir: Path | str | None = None,
+             stamp_minute_utc: int = 20 * 60 + 30) -> dict[int, int]:
+    """Write one ``.t6`` record per session from a daily price frame (the Hermes ``PriceStore`` columns
+    ``date, open, high, low, close, adjusted_close, volume``). Returns ``{year: records}``.
+
+    Prices are adjusted (``x adjusted_close / close``) and ``val`` holds that factor. Every record is stamped
+    ``stamp_minute_utc`` minutes after UTC midnight of its session: a fixed time inside the daily bar that ends
+    21:00 UTC (``BarPeriod = 1440; BarOffset = 21*60``), not the real close, so a stamp never sits on a bar edge
+    and does not move with daylight saving.
+    """
+    out = Path(out_dir) if out_dir else paths.history_dir()
+    d = daily.sort("date").with_columns(factor=pl.col("adjusted_close") / pl.col("close"))
+    if d.is_empty() or d["date"].n_unique() != d.height:
+        raise ValueError(f"{symbol}: the daily frame is empty or has duplicate dates")
+    if d.select(pl.any_horizontal(pl.col("open", "high", "low", "close", "adjusted_close").is_null()
+                                  | (pl.col("open", "high", "low", "close", "adjusted_close") <= 0)).any()).item():
+        raise ValueError(f"{symbol}: null or non-positive prices")
+    written: dict[int, int] = {}
+    for (yr,), g in d.group_by(pl.col("date").dt.year(), maintain_order=True):
+        g = g.reverse()
+        a = np.empty(len(g), T6)
+        day = (g["date"].to_numpy().astype("datetime64[D]").astype("datetime64[ns]") - OLE0) / np.timedelta64(1, "D")
+        a["t"] = day + stamp_minute_utc / 1440.0
+        f = g["factor"].to_numpy()
+        for field, col in (("h", "high"), ("l", "low"), ("o", "open"), ("c", "close")):
+            a[field] = g[col].to_numpy() * f
+        a["v"] = f
+        a["vol"] = g["volume"].to_numpy()
+        a.tofile(out / f"{symbol.upper()}_{yr}.t6")
+        written[yr] = len(a)
+    return written
+
+
 def factor_block(symbol: str, source: str = "databento", freq: str = "1m") -> str:
     """lite-C roll / dividend table: ``<SYM>_NF``, ``<SYM>_FT`` (bar-close minute, UTC, since 1899-12-30, where
     the factor changes) and ``<SYM>_FV`` (the factor from then on). Minutes as ``int``, because a decimal DATE

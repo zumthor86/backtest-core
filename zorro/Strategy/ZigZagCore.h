@@ -249,7 +249,7 @@ function run()
 	int nOpen = 0;
 	int newDir = 0;
 	for(open_trades) {
-		if(!TradeIsOpen) continue;
+		if(!TradeIsOpen || TradeIsPool) continue;      // a pool trade is Zorro's net at the broker, never the script's
 		nOpen++;
 		if(TradeStopLimit == 0) {                      // filled this bar: exits from the fill, as the engine does
 			var le = log(TradePriceOpen);
@@ -329,14 +329,14 @@ function run()
 			if(Pos == -dirNext && (ZZ_REV || RestTake)) {         // the next confirmation exits this position
 				if(Pos > 0) stop = max(PosSL, RestE); else stop = min(PosSL, RestE);
 			}
-			for(open_trades) if(TradeIsOpen) { TradeStopLimit = stop; TradeProfitLimit = PosTarget; }
+			for(open_trades) if(TradeIsOpen && !TradeIsPool) { TradeStopLimit = stop; TradeProfitLimit = PosTarget; }
 		}
 		if(RestTake && Pos != dirNext) wantDir = dirNext;           // flat, or the next leg reverses the position
 	}
 	// One resting entry order, moved every bar. A fresh order each bar would leave millions of expired orders in
 	// Zorro's trade list; that ran the 32-bit Zorro out of memory in July 2024 (Errors 049 and 036).
 	int havePend = 0;
-	for(open_trades) if(TradeIsPending) {
+	for(open_trades) if(TradeIsPending && !TradeIsPool) {
 		if(wantDir != 0 && !havePend && TradeIsLong == (wantDir > 0)) {
 			TradeEntryLimit = RestE;
 			havePend = 1;

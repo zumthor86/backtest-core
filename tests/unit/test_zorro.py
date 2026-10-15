@@ -59,3 +59,20 @@ def test_battery_verdicts_use_default_bars():
 
 def test_asset_row_defines_one_unit_as_one_point():
     assert export.asset_row("NQ", 20000) == "NQ,20000,0,0,0,0.0001,0.0001,-100,0,1,0,NQ"
+
+
+def test_t6_daily_writes_adjusted_records_newest_first(tmp_path):
+    import numpy as np
+    from datetime import date
+
+    daily = pl.DataFrame({"date": [date(2019, 12, 30), date(2019, 12, 31), date(2020, 1, 2)],
+                          "open": [100.0, 102.0, 104.0], "high": [101.0, 103.0, 105.0], "low": [99.0, 101.0, 103.0],
+                          "close": [100.0, 102.0, 104.0], "adjusted_close": [50.0, 51.0, 104.0],
+                          "volume": [10, 20, 30]})
+    assert export.t6_daily("tlt", daily, tmp_path) == {2019: 2, 2020: 1}
+    a = np.fromfile(tmp_path / "TLT_2019.t6", export.T6)
+    ole = (np.datetime64("2019-12-31") - np.datetime64("1899-12-30")).astype(int)
+    assert a["t"].tolist() == [ole + 1230 / 1440, ole - 1 + 1230 / 1440]          # newest first, 20:30 UTC
+    assert a["c"].tolist() == [51.0, 50.0] and a["h"].tolist() == [51.5, 50.5] and a["v"].tolist() == [0.5, 0.5]
+    with pytest.raises(ValueError):
+        export.t6_daily("tlt", daily.with_columns(close=pl.lit(0.0)), tmp_path)
