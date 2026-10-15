@@ -24,6 +24,28 @@ def month_ends(days: np.ndarray) -> np.ndarray:
     return np.flatnonzero(np.append(months[1:] != months[:-1], False))
 
 
+def _legs(sig: Optional[np.ndarray], members: np.ndarray, quantile: int, min_names: int):
+    """(long, short, names per leg) from one formation's signal, or None with no signal or too few names ranked."""
+    if sig is None:
+        return None
+    ok = np.flatnonzero(members & np.isfinite(sig))
+    if len(ok) < min_names:
+        return None
+    order = ok[np.argsort(sig[ok], kind="stable")]
+    n = len(ok) // quantile
+    return order[-n:], order[:n], n
+
+
+def _basket_return(ret_seg: np.ndarray, idx: np.ndarray) -> np.ndarray:
+    """Daily return of an equal-weight basket bought on the first day and held (weights drift)."""
+    v = np.cumprod(1 + ret_seg[:, idx], axis=0).mean(axis=1)
+    return np.diff(np.concatenate([[1.0], v])) / np.concatenate([[1.0], v[:-1]])
+
+
+def _turnover(cur: np.ndarray, prev: Optional[np.ndarray], n: int) -> float:
+    return 2.0 if prev is None else 2.0 * (1 - len(np.intersect1d(cur, prev)) / n)
+
+
 def sort_book(
     panel: dict,
     signal: Callable[[int], Optional[np.ndarray]],
@@ -52,27 +74,15 @@ def sort_book(
     first = None
     for k in range(len(form) - 1):
         t = form[k]
-        sig = signal(k)
-        if sig is None or (start is not None and days[t] < start):
+        legs = None if start is not None and days[t] < start else _legs(signal(k), mem[t], quantile, min_names)
+        if legs is None:
             continue
-        ok = np.flatnonzero(mem[t] & np.isfinite(sig))
-        if len(ok) < min_names:
-            continue
-        order = ok[np.argsort(sig[ok], kind="stable")]
-        n = len(ok) // quantile
-        short, long_ = order[:n], order[-n:]
+        long_, short, n = legs
         l_lev, s_lev = lev(k, long_, short) if lev else (1.0, 1.0)
         seg = slice(t + 1, form[k + 1] + 1)
-
-        def leg(idx):
-            v = np.cumprod(1 + ret[seg][:, idx], axis=0).mean(axis=1)
-            return np.diff(np.concatenate([[1.0], v])) / np.concatenate([[1.0], v[:-1]])
-
-        g = l_lev * (leg(long_) - rf[seg]) - s_lev * (leg(short) - rf[seg])
-        turn_l = 2.0 if prev_l is None else 2.0 * (1 - len(np.intersect1d(long_, prev_l)) / n)
-        turn_s = 2.0 if prev_s is None else 2.0 * (1 - len(np.intersect1d(short, prev_s)) / n)
+        g = l_lev * (_basket_return(ret[seg], long_) - rf[seg]) - s_lev * (_basket_return(ret[seg], short) - rf[seg])
         cost = np.full(len(g), borrow * s_lev)
-        cost[0] += side * (l_lev * turn_l + s_lev * turn_s)
+        cost[0] += side * (l_lev * _turnover(long_, prev_l, n) + s_lev * _turnover(short, prev_s, n))
         gross[seg], net[seg] = g, g - cost
         prev_l, prev_s = long_, short
         first = first if first is not None else t + 1

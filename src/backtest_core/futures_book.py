@@ -57,7 +57,7 @@ def time_series_book(
         r, sigma = m["r"], m["sigma"]
         ends = month_ends(m["ses"])
         w, pnl, cst, w_prev = np.zeros(len(r)), np.zeros(len(r)), np.zeros(len(r)), 0.0
-        for a, b in zip(ends[:-1], ends[1:]):
+        for a, b in zip(ends[:-1], ends[1:], strict=True):
             if a < min_history:
                 continue
             wk = signal(m, a) * target / sigma[a]
@@ -83,6 +83,40 @@ def trailing_sign(m: dict, a: int, look: int = 252) -> float:
     return float(np.sign(m["c"][a] / m["c"][a - look] - 1))
 
 
+def _cross_signal(score: np.ndarray, ranked: bool, half: int) -> np.ndarray:
+    """The centred rank scaled to -1..+1, or the sign; ``half`` keeps one side only."""
+    if ranked:
+        rank = np.argsort(np.argsort(score, kind="stable"), kind="stable") + 1.0
+        sig = (rank - rank.mean()) / (len(score) / 2)
+    else:
+        sig = np.sign(score)
+    return np.where(half * sig > 0, sig, 0.0) if half else sig
+
+
+def _held_month(market: dict, mo, w: float, w_prev: float, n: int, cost: float) -> Optional[pl.DataFrame]:
+    """One market's daily gross and net through the month after ``mo``; None when it has no session then."""
+    hold = np.flatnonzero(market["months"] == mo + 1)
+    if len(hold) == 0:
+        return None
+    g = w * market["r"][hold] / n
+    c = np.zeros(len(hold))
+    c[0] = cost * abs(w - w_prev) / n
+    return pl.DataFrame({"d": market["ses"][hold], "g": g, "n": g - c})
+
+
+def _book_month(markets, scores, have, mo, prev, ranked, half, target, cost) -> list[pl.DataFrame]:
+    """The frames of one formation month; updates ``prev`` (each market's last weight) for those held."""
+    sig = _cross_signal(np.array([scores[s][mo][0] for s in have]), ranked, half)
+    frames = []
+    for s, x in zip(have, sig, strict=True):
+        w = x * target / scores[s][mo][1]
+        frame = _held_month(markets[s], mo, w, prev[s], len(have), cost)
+        if frame is not None:
+            frames.append(frame)
+            prev[s] = w
+    return frames
+
+
 def cross_section_book(
     markets: dict[str, dict],
     scores: dict[str, dict],
@@ -100,32 +134,12 @@ def cross_section_book(
     only. Weight = signal x target / sigma, and each market carries ``1 / n`` of the book, ``n`` the markets scored
     that month. A market that drops out is treated as flat for its next cost."""
     names = list(markets) if names is None else names
-    all_months = sorted({mo for s in names for mo in scores[s]})
-    frames, prev = [], {s: 0.0 for s in names}
-    for mo in all_months:
+    frames, prev = [], dict.fromkeys(names, 0.0)
+    for mo in sorted({mo for s in names for mo in scores[s]}):
         have = [s for s in names if mo in scores[s]]
-        if len(have) < min_markets:
-            continue
-        score = np.array([scores[s][mo][0] for s in have])
-        if ranked:
-            rank = np.argsort(np.argsort(score, kind="stable"), kind="stable") + 1.0
-            sig = (rank - rank.mean()) / (len(have) / 2)
-        else:
-            sig = np.sign(score)
-        if half:
-            sig = np.where(half * sig > 0, sig, 0.0)
-        for s, x in zip(have, sig):
-            w = x * target / scores[s][mo][1]
-            hold = np.flatnonzero(markets[s]["months"] == mo + 1)
-            if len(hold) == 0:
-                continue
-            g = w * markets[s]["r"][hold] / len(have)
-            c = np.zeros(len(hold))
-            c[0] = cost * abs(w - prev[s]) / len(have)
-            prev[s] = w
-            frames.append(pl.DataFrame({"d": markets[s]["ses"][hold], "g": g, "n": g - c}))
-        for s in names:
-            if s not in have:
+        if len(have) >= min_markets:
+            frames += _book_month(markets, scores, have, mo, prev, ranked, half, target, cost)
+            for s in set(names) - set(have):
                 prev[s] = 0.0
     j = pl.concat(frames).group_by("d").agg(pl.col("g").sum(), pl.col("n").sum()).sort("d")
     return j["d"].to_numpy().astype("datetime64[D]"), j["n"].to_numpy(), j["g"].to_numpy()
