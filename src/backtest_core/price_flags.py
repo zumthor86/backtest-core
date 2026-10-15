@@ -4,7 +4,7 @@ A flag is one row ``(code, date, reason, detail)``. The price files stay exactly
 loader (``universe.panel``) reads the flags and blanks what they name. So every study cleans the same way, and a
 reader can see which days were blanked and why.
 
-    python -m backtest_core.price_flags build     # needs RESEARCH_PRICES_DIR; rewrites the flags beside the store
+    python -m backtest_core.price_flags build     # needs HERMES_PRICES_DIR; rewrites the flags beside the store
 
 Reasons, and what the loader does with each:
 
@@ -142,7 +142,7 @@ def apply(prices: np.ndarray, days: np.ndarray, codes: np.ndarray, flags: pl.Dat
 def build(prices_dir: str | os.PathLike | None = None, start: str = "2006-01-01") -> pl.DataFrame:
     from . import universe  # lazy: universe imports this module
 
-    prices_dir = prices_dir or os.environ["RESEARCH_PRICES_DIR"]
+    prices_dir = prices_dir or os.environ["HERMES_PRICES_DIR"]
     days, codes, raw, _ = universe.price_matrix(prices_dir, start)
     flags = detect(days, codes.tolist(), raw)
     path = flags_path(prices_dir)

@@ -2,7 +2,7 @@
 
 Everything is read from Hermes: member snapshots (``v_index_membership``), who each member was
 (``v_index_listing``: price code, SEC company number, industry code), SEC earnings notices
-(``v_earnings_filings``) and the research price store (``RESEARCH_PRICES_DIR``).
+(``v_earnings_filings``) and the Hermes price store (``HERMES_PRICES_DIR``), dead companies included.
 
 A column of a :class:`Panel` is one **stay**: an unbroken run of a ticker in the Russell 3000. A ticker is not a
 company (it is reused, and a delisted company has none), so nothing here is keyed by ticker alone.
@@ -102,7 +102,7 @@ def membership_matrix(days: np.ndarray, snapshots: pl.DataFrame, stays: pl.DataF
 def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: str | None = None,
           db_url: str | None = None) -> Panel:
     """Daily prices and membership for every stay with a proven price code, from ``start``."""
-    prices_dir = prices_dir or os.environ["RESEARCH_PRICES_DIR"]
+    prices_dir = prices_dir or os.environ["HERMES_PRICES_DIR"]
     stays = listings(db_url)
     days, codes, raw, open_rel = price_matrix(prices_dir, start)
     # Bad prices are named in the flags built beside the store (``price_flags``); the files are never edited.
@@ -125,14 +125,14 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
 
 
 def price_matrix(prices_dir: str, start: date | str = "2006-01-01") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """The research price store as it is: trading days, price codes (sorted), adjusted closes, and each day's
+    """The Hermes price store's US files as they are: trading days, price codes (sorted), adjusted closes, and each day's
     open over its own close (NaN where the open is missing or outside ``OPEN_RANGE`` of the close), days by codes.
     A trading day is a date on which at least ``MIN_PRICED_NAMES`` codes have a price."""
     from store_core import PriceStore  # lazy, as in ``bars``
 
-    px = PriceStore(prices_dir).read(start_date=start)
+    px = PriceStore(prices_dir).read(start_date=start, exchanges=["US"])
     if px.is_empty():
-        raise LookupError("the research price store returned nothing; is RESEARCH_PRICES_DIR set?")
+        raise LookupError("the price store returned nothing; is HERMES_PRICES_DIR set?")
     rel = pl.col("open") / pl.col("close")
     px = (px.filter((pl.col("adjusted_close") > 0) & (pl.col("close") > 0))
             .select("symbol", pl.col("date").cast(pl.Date), "adjusted_close",
