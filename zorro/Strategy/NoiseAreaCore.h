@@ -52,7 +52,7 @@
 
 var Ring[5460];            // NBARS * LOOKBACK_SESSIONS: [minute index * 14 + session column]
 var Today[390];
-int Committed, LastIdx, StartOk, CurDate, Pos, FI;
+int Committed, LastIdx, StartOk, CurDate, Pos, FI, NaShown;
 var DayOpen, DayFactor, LastClose, LastFactor, CprevRaw, CprevFactor, CumPV, CumV;
 
 // action: 1 long, -1 short, 0 exit on the stop, 9 flat at the close, 2 check with no action
@@ -97,6 +97,9 @@ function run()
 	LookBack = NA_LIVE_LOOKBACK;
 	StartDate = 20250101;      // LIVETEST; trade mode starts now and ignores it
 #endif
+#ifdef LIVETEST
+	if(Command[1]) EndDate = Command[1];   // the daily paper replay (backtest_core.zorro.paper) runs to the history's end
+#endif
 	robustBars(0);
 #ifdef SIM
 	robustCapital(NOTIONAL);
@@ -109,6 +112,17 @@ function run()
 #else
 	set(PRELOAD);              // the lookback comes from our .t6 history, the broker fills the days after it
 	set(LOGFILE);
+	set(NOLOCK);               // own API connection; see ZigZagCore.h
+	// Regular hours only, as the backtest's history. IB sends QQQ quotes through the night, and without this Zorro
+	// made a bar every clock minute: the 6,240-bar lookback then held about 4 sessions, the script never committed the
+	// 14 it needs, and it made no check from 2026-10-06 on. BarZone is UTC; the hours follow New York's daylight time
+	// on the day the sleeve starts (it starts every week).
+	var etOff = (wdate(NOW) - etFromUtc(wdate(NOW))) * 24;           // 4 or 5 hours
+	StartMarket = 930 + (int)(etOff + 0.5) * 100;
+	EndMarket = 1601 + (int)(etOff + 0.5) * 100;
+	StartWeek = 10000;         // Monday 00:00 UTC
+	EndWeek = 52359;           // Friday 23:59 UTC
+	BarMode = BR_MARKET + BR_WEEKEND + BR_SLEEP;
 	assetList("AssetsLive");
 	asset(NA_ASSET);
 	Hedge = 4;                 // IB keeps one net position (NFA): an exit and an entry on one bar are sent as the net
@@ -117,7 +131,7 @@ function run()
 	int k;
 	if(is(INITRUN)) {
 		liveRestart();
-		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0;
+		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0; NaShown = 0;
 		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0;
 		for(k = 0; k < 5460; k++) Ring[k] = 0;
 #ifdef SIM
@@ -131,6 +145,12 @@ function run()
 		return;                // the first run comes before any prices are loaded
 	}
 	hbBar();
+#ifndef SIM
+	if(!is(LOOKBACK) && !NaShown) {   // the start's proof: 14 or more, or the sleeve cannot trade yet
+		NaShown = 1;
+		printf("\nLookback done: %i full sessions committed (%i needed)", Committed, LOOKBACK_SESSIONS);
+	}
+#endif
 
 	var et = etFromUtc(wdate(0));                                        // bar CLOSE time, New York
 	int minuteOfDay = (int)floor((et - floor(et)) * 1440 + 0.5);
