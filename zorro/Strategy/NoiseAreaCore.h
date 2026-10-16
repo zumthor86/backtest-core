@@ -31,7 +31,8 @@
 
 // -d LIVE (trade mode) trades QQQ shares on the paper account. The 14-session state is rebuilt on every start from
 //   NA_LIVE_LOOKBACK bars (16 sessions): PRELOAD reads them from our .t6 history and the broker fills the days after
-//   it. A sleeve starts flat. The dividend factor table ends with the history, so a new ex-dividend date needs the
+//   it. Orders go out only after the lookback, so at its end the sleeve takes the position the rule holds then
+//   (a start in the middle of a trade enters at once). The dividend factor table ends with the history, so a new ex-dividend date needs the
 //   history and NAFactors.h exported again (export_t6.py) before it.
 // -d LIVETEST (test mode) runs the same start on history, with the backtest's costs and fills.
 #ifdef LIVETEST
@@ -52,10 +53,11 @@
 
 var Ring[5460];            // NBARS * LOOKBACK_SESSIONS: [minute index * 14 + session column]
 var Today[390];
-int Committed, LastIdx, StartOk, CurDate, Pos, FI, NaShown;
-var DayOpen, DayFactor, LastClose, LastFactor, CprevRaw, CprevFactor, CumPV, CumV;
+int Committed, LastIdx, StartOk, CurDate, Pos, FI, NaShown, Synced;
+var DayOpen, DayFactor, LastClose, LastFactor, CprevRaw, CprevFactor, CumPV, CumV, PrevAcc;
 
-// action: 1 long, -1 short, 0 exit on the stop, 9 flat at the close, 2 check with no action
+// action: 1 long, -1 short, 0 exit on the stop, 9 flat at the close, 2 check with no action,
+//         3 / -3 long / short entered at the end of the lookback (the rule held it then)
 void logSignal(int action, var P, var UB, var LB, var VWAP)
 {
 	if(!robustLogging()) return;
@@ -131,8 +133,11 @@ function run()
 	int k;
 	if(is(INITRUN)) {
 		liveRestart();
-		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0; NaShown = 0;
-		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0;
+#ifndef SIM
+		brokerCommand(SET_VOLTYPE, 4);   // trade volume, for the broker's history and live bars; IB's default is quote size
+#endif
+		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0; NaShown = 0; Synced = 0;
+		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0; PrevAcc = 0;
 		for(k = 0; k < 5460; k++) Ring[k] = 0;
 #ifdef SIM
 		if(robustLogging()) {
@@ -178,6 +183,7 @@ function run()
 		Pos = 0;
 		CumPV = 0;
 		CumV = 0;
+		PrevAcc = 0;
 		for(k = 0; k < NBARS; k++) Today[k] = 0;
 	}
 
@@ -193,6 +199,17 @@ function run()
 	LastFactor = factor;
 
 	var vol = marketVol(0);
+#ifndef SIM
+	// Live, IB reports the day's running volume (ib.txt), history the volume of each minute. A live bar's volume is
+	// the change since the last live bar; the first live bar of a session or of a start has no earlier total and
+	// counts nothing.
+	if(!is(LOOKBACK)) {
+		var acc = vol;
+		vol = 0;
+		if(PrevAcc > 0 && acc >= PrevAcc) vol = acc - PrevAcc;
+		PrevAcc = acc;
+	}
+#endif
 	CumPV += (priceHigh(0) + priceLow(0) + P) / 3 * vol;
 	CumV += vol;
 	var VWAP = P;
@@ -206,6 +223,20 @@ function run()
 	var cprev = CprevRaw * CprevFactor / DayFactor;          // yesterday's close on today's price scale
 	var UB = max(DayOpen, cprev) * (1 + sigma);
 	var LB = min(DayOpen, cprev) * (1 - sigma);
+
+#ifdef LIVE
+	// The lookback runs the rule but sends no order: at its end, hold what the rule holds.
+	if(!is(LOOKBACK) && !Synced) {
+		Synced = 1;
+		if(idx < NA_FLAT_IDX && Pos == 1 && !NumOpenLong) {
+			Lots = (int)(NOTIONAL / P);
+			enterLong(); logSignal(3, P, UB, LB, VWAP);
+		} else if(idx < NA_FLAT_IDX && Pos == -1 && !NumOpenShort) {
+			Lots = (int)(NOTIONAL / P);
+			enterShort(); logSignal(-3, P, UB, LB, VWAP);
+		}
+	}
+#endif
 
 	// Checks: bars closing 10:00, 10:30 ... 15:30.
 	if(idx >= 29 && idx <= 359 && (idx + 1) % 30 == 0) {
