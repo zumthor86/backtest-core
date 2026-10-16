@@ -21,6 +21,8 @@
 //   Checks at 10:00, 10:30 ... 15:30 on the close of the bar ending then; fills at the NEXT bar's open.
 //   Flat: long above Upper, short below Lower. Long exits below max(Upper, VWAP); short exits above
 //   min(Lower, VWAP); then the entry rule is applied again at the same check. Flat at the 16:00 close.
+//   Live only: on a session where a bar loaded before the start had no volume (IB's history bars carry none),
+//   the VWAP is not known, and the exit is the opposite band until the close (long below Lower, short above Upper).
 //   1x notional (or NA_LOTS lots), cost NA_COST per lot round trip.
 //
 // Why VWAP is computed here: NoiseArea.c reads it from a second asset (QQQVW). A shuffled-price reality check
@@ -58,7 +60,7 @@
 
 var Ring[5460];            // NBARS * LOOKBACK_SESSIONS: [minute index * 14 + session column]
 var Today[390];
-int Committed, LastIdx, StartOk, CurDate, Pos, FI, NaShown, Synced;
+int Committed, LastIdx, StartOk, CurDate, Pos, FI, NaShown, Synced, DayNoVol;
 var DayOpen, DayFactor, LastClose, LastFactor, CprevRaw, CprevFactor, CumPV, CumV, PrevAcc;
 
 // action: 1 long, -1 short, 0 exit on the stop, 9 flat at the close, 2 check with no action,
@@ -151,7 +153,7 @@ function run()
 		brokerCommand(SET_VOLTYPE, 4);   // trade volume, for the broker's history and live bars; IB's default is quote size
 #endif
 		Committed = 0; LastIdx = -1; StartOk = 0; CurDate = 0; Pos = 0; FI = 0; NaShown = 0; Synced = 0;
-		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0; PrevAcc = 0;
+		CprevRaw = 0; CprevFactor = 1; CumPV = 0; CumV = 0; PrevAcc = 0; DayNoVol = 0;
 		for(k = 0; k < 5460; k++) Ring[k] = 0;
 #ifdef SIM
 		if(robustLogging()) {
@@ -198,6 +200,7 @@ function run()
 		CumPV = 0;
 		CumV = 0;
 		PrevAcc = 0;
+		DayNoVol = 0;
 		for(k = 0; k < NBARS; k++) Today[k] = 0;
 	}
 
@@ -222,6 +225,8 @@ function run()
 		vol = 0;
 		if(PrevAcc > 0 && acc >= PrevAcc) vol = acc - PrevAcc;
 		PrevAcc = acc;
+	} else if(vol <= 0) {
+		DayNoVol = 1;
 	}
 #endif
 	CumPV += (priceHigh(0) + priceLow(0) + P) / 3 * vol;
@@ -242,6 +247,9 @@ function run()
 	// The lookback runs the rule but sends no order: at its end, hold what the rule holds.
 	if(!is(LOOKBACK) && !Synced) {
 		Synced = 1;
+#ifndef SIM
+		if(DayNoVol) printf("\nNo volume before the start today: the exit is the opposite band until the close");
+#endif
 		if(idx < NA_FLAT_IDX && Pos == 1 && !NumOpenLong) {
 			Lots = naLots(P);
 			enterLong(); logSignal(3, P, UB, LB, VWAP);
@@ -255,9 +263,12 @@ function run()
 	// Checks: bars closing 10:00, 10:30 ... 15:30.
 	if(idx >= 29 && idx <= 359 && (idx + 1) % 30 == 0) {
 		int acted = 0;
-		if(Pos == 1 && P < max(UB, VWAP)) {
+		var longStop = max(UB, VWAP);
+		var shortStop = min(LB, VWAP);
+		if(DayNoVol) { longStop = LB; shortStop = UB; }
+		if(Pos == 1 && P < longStop) {
 			exitLong(); Pos = 0; acted = 1; logSignal(0, P, UB, LB, VWAP);
-		} else if(Pos == -1 && P > min(LB, VWAP)) {
+		} else if(Pos == -1 && P > shortStop) {
 			exitShort(); Pos = 0; acted = 1; logSignal(0, P, UB, LB, VWAP);
 		}
 		if(Pos == 0) {
