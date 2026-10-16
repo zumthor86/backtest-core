@@ -5,7 +5,10 @@
 //   NA_ASSET        asset name, e.g. "QQQ"
 //   NA_ASSETLIST    asset list, e.g. "AssetsNoiseArea"
 //   NA_NF, NA_FT, NA_FV   dividend factor table (NAFactors.h)
-//   NA_COST         round-trip cost per share, e.g. 0.017
+//   NA_COST         round-trip cost per lot (a share, a contract), e.g. 0.017
+// and may define:
+//   NA_LOTS         a fixed number of lots (default: 1x NOTIONAL in lots of one unit, as for QQQ shares)
+//   NA_LIVE_LOOKBACK  live lookback in bars (default 6240 = 16 sessions of regular-hours bars)
 //   NA_START, NA_END      test window, yyyymmdd
 //   NA_SIGNAL_LOG   parity log path, forward slashes
 // and includes <default.c>, the factor table and "Robust.h" first.
@@ -18,7 +21,7 @@
 //   Checks at 10:00, 10:30 ... 15:30 on the close of the bar ending then; fills at the NEXT bar's open.
 //   Flat: long above Upper, short below Lower. Long exits below max(Upper, VWAP); short exits above
 //   min(Lower, VWAP); then the entry rule is applied again at the same check. Flat at the 16:00 close.
-//   1x notional, cost NA_COST per share round trip.
+//   1x notional (or NA_LOTS lots), cost NA_COST per lot round trip.
 //
 // Why VWAP is computed here: NoiseArea.c reads it from a second asset (QQQVW). A shuffled-price reality check
 // would shuffle that asset separately from the traded one, so the exit rule would compare unrelated curves.
@@ -42,7 +45,9 @@
 #ifndef LIVE
 #define SIM
 #endif
+#ifndef NA_LIVE_LOOKBACK
 #define NA_LIVE_LOOKBACK 6240
+#endif
 // The last bar closes at 16:00 sharp, when the market has shut: a market order sent then waits for tomorrow's open
 // and the sleeve would hold overnight. Live flattens on the bar closing 15:59 instead.
 #ifdef LIVE
@@ -75,6 +80,15 @@ var etFromUtc(var t)
 	var dstEnd = nov1 + ((7 - dowOle(nov1)) % 7) + 6. / 24;         // first Sunday of November, 02:00 EDT
 	if(t >= dstStart && t < dstEnd) return t - 4. / 24;
 	return t - 5. / 24;
+}
+
+int naLots(var P)
+{
+#ifdef NA_LOTS
+	return NA_LOTS;
+#else
+	return (int)(NOTIONAL / P);
+#endif
 }
 
 var factorNow()
@@ -229,10 +243,10 @@ function run()
 	if(!is(LOOKBACK) && !Synced) {
 		Synced = 1;
 		if(idx < NA_FLAT_IDX && Pos == 1 && !NumOpenLong) {
-			Lots = (int)(NOTIONAL / P);
+			Lots = naLots(P);
 			enterLong(); logSignal(3, P, UB, LB, VWAP);
 		} else if(idx < NA_FLAT_IDX && Pos == -1 && !NumOpenShort) {
-			Lots = (int)(NOTIONAL / P);
+			Lots = naLots(P);
 			enterShort(); logSignal(-3, P, UB, LB, VWAP);
 		}
 	}
@@ -248,10 +262,10 @@ function run()
 		}
 		if(Pos == 0) {
 			if(P > UB) {
-				Lots = (int)(NOTIONAL / P);
+				Lots = naLots(P);
 				enterLong(); Pos = 1; acted = 1; logSignal(1, P, UB, LB, VWAP);
 			} else if(P < LB) {
-				Lots = (int)(NOTIONAL / P);
+				Lots = naLots(P);
 				enterShort(); Pos = -1; acted = 1; logSignal(-1, P, UB, LB, VWAP);
 			}
 		}

@@ -13,6 +13,7 @@ scripts from here into Zorro before a run. Edit here, never in Zorro's folder.
 | `NoiseArea.c` | QQQ noise area, in-sample window (parity artefact — do not edit) | `Hephaestus/backtests/qqq_noise_area/` |
 | `NoiseAreaFull.c` | The same run to 2026-09 for the portfolio | — |
 | `NoiseAreaCore.h`, `NoiseAreaQQQ.c` | The same rules with VWAP computed in the script (needs Zorro S); uses `Robust.h` | `Hephaestus/backtests/qqq_noise_area_zorro_battery/parity.py` (against `NoiseAreaFull.c`) |
+| `NoiseAreaNQ.c` | The paper sleeve: `NoiseAreaCore.h` on one full-size NQ contract, raw prices with the NQ roll factors (`NQF_<YYYY>.t6`); IBKR does not let this account trade QQQ | `Hephaestus/backtests/nq_noise_area_zorro/parity_nq.py` |
 | `ZZFactors.h`, `NAFactors.h` | Generated roll / dividend factor tables (`backtest_core.zorro.export.factor_block`; `export_t6.py` for QQQ) | — |
 | `History/AssetsLive.csv` | Trade-mode asset list for `-d LIVE`: history names (GC, CL, ES, NQ) with the micro contract as the symbol. The contract must be the one the `.t6` history ends on | — |
 | `Heartbeat.h`, `StateExport.h`, `LiveRestart.h` | Live-only helpers the sleeve cores include (empty outside `-d LIVE`). `Heartbeat.h`: one line a minute in `Log\Heartbeat_<Script>.csv` (price ticks and bars handled). `StateExport.h`: the sleeve's pending entries and open trades with stop and target, rewritten each minute in `Log\State_<Script>.csv`. `LiveRestart.h`: `brokerCommand(SET_RESTART, 305)` so the IB plugin re-logs in after the Gateway's 03:00 restart | — |
