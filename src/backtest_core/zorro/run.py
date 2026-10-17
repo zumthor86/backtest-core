@@ -31,22 +31,24 @@ def deploy(names: Iterable[str] | None = None, src: Path | str | None = None) ->
 
 
 def run(script: str, *ints: int, defines: Iterable[str] = (), mode: str = "run", timeout: int | None = 3600,
-        report_name: str | None = None, output: Path | str | None = None) -> report.Report | None:
+        report_name: str | None = None, output: Path | str | None = None, low_priority: bool = False
+        ) -> report.Report | None:
     """Run ``Zorro.exe -<mode> <script> [-i n ...] [-d X ...] -quiet`` and parse ``Log/<script>.txt``.
 
     ``ints`` become ``Command[0..3]``. Raises if Zorro exits with an error or writes no fresh report.
     With ``output``, that file must come out fresh instead and nothing is parsed (returns None): a run with
     ``NumTotalCycles`` writes no performance report at all (Zorro's ``LogNumber = 0`` default).
+    ``low_priority``: below-normal priority, so live sleeves on the same machine get the processor first.
     """
     target = Path(output) if output is not None else paths.log_dir() / f"{report_name or script}.txt"
     before = target.stat().st_mtime if target.exists() else 0.0
-    cmd = _exec(script, ints, defines, mode, timeout)
+    cmd = _exec(script, ints, defines, mode, timeout, low_priority)
     if not target.exists() or target.stat().st_mtime <= before:
         raise ZorroError(f"{' '.join(cmd)} wrote no fresh {target} (compile error? check the script)")
     return None if output is not None else report.read(target)
 
 
-def _exec(script: str, ints, defines, mode: str, timeout: int | None) -> list[str]:
+def _exec(script: str, ints, defines, mode: str, timeout: int | None, low_priority: bool = False) -> list[str]:
     if len(ints) > 4:
         raise ValueError("Zorro passes at most 4 integers (-i)")
     cmd = [str(paths.ZORRO_DIR / "Zorro.exe"), f"-{mode}", script]
@@ -55,7 +57,8 @@ def _exec(script: str, ints, defines, mode: str, timeout: int | None) -> list[st
     for d in defines:
         cmd += ["-d", d]
     cmd.append("-quiet")
-    proc = subprocess.run(cmd, cwd=paths.ZORRO_DIR, capture_output=True, text=True, timeout=timeout)
+    flags = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0) if low_priority else 0
+    proc = subprocess.run(cmd, cwd=paths.ZORRO_DIR, capture_output=True, text=True, timeout=timeout, creationflags=flags)
     if proc.returncode != 0:
         raise ZorroError(f"{' '.join(cmd)} exited {proc.returncode}: {proc.stderr or proc.stdout}")
     return cmd

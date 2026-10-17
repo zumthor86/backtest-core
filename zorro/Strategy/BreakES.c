@@ -2,6 +2,7 @@
 #include <default.c>
 
 #define BK_ASSET "ES"
+#define PS_SOLE_OWNER          // PoolSync.h: the only sleeve on its broker instrument
 #define BK_EVENTS "Log/BreakES_events.csv"
 #define BK_WARM_EVENTS "Log/BreakES_warm_events.csv"
 #define BK_LIVE_EVENTS "Log/BreakES_live_events.csv"

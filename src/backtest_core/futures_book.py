@@ -8,7 +8,9 @@ A market is a dict with ``ses`` (session dates, datetime64[D]), ``r`` (daily ret
 - `cross_section_book`: each month the markets with a score are ranked (or signed) against each other and each gets
   ``1 / n`` of the book (register row 114, carry).
 
-Both charge ``cost`` per unit of weight change on the first day of the new month, and return ``(days, net, gross)``.
+- `dated_book`: the cross-section book on any formation calendar (weekly, after a report's release).
+
+All charge ``cost`` per unit of weight change on the first day of the new period, and return ``(days, net, gross)``.
 """
 from __future__ import annotations
 
@@ -141,5 +143,55 @@ def cross_section_book(
             frames += _book_month(markets, scores, have, mo, prev, ranked, half, target, cost)
             for s in set(names) - set(have):
                 prev[s] = 0.0
+    j = pl.concat(frames).group_by("d").agg(pl.col("g").sum(), pl.col("n").sum()).sort("d")
+    return j["d"].to_numpy().astype("datetime64[D]"), j["n"].to_numpy(), j["g"].to_numpy()
+
+
+def _held_span(market: dict, start, end, w: float, w_prev: float, n: int, cost: float) -> Optional[pl.DataFrame]:
+    """One market's daily gross and net over the sessions after ``start`` up to and including ``end``."""
+    hold = np.flatnonzero((market["ses"] > start) & (market["ses"] <= end))
+    if len(hold) == 0:
+        return None
+    g = w * market["r"][hold] / n
+    c = np.zeros(len(hold))
+    c[0] = cost * abs(w - w_prev) / n
+    return pl.DataFrame({"d": market["ses"][hold], "g": g, "n": g - c})
+
+
+def dated_book(
+    markets: dict[str, dict],
+    scores: dict[str, dict],
+    dates: np.ndarray,
+    *,
+    ranked: bool = True,
+    half: int = 0,
+    target: float = TARGET,
+    cost: float = COST,
+    min_markets: int = 4,
+    names: Optional[list[str]] = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`cross_section_book` on any formation calendar (weekly, after a report's release, …).
+
+    ``dates`` (datetime64[D], ascending) are the formation days; the book formed at the close of
+    ``dates[k]`` is held over the sessions after it up to and including ``dates[k + 1]``, so the last
+    date only closes the period before it. ``scores[sym][day] = (score, sigma)`` at the close of a
+    formation day. Signal, sizing and cost as in `cross_section_book`; ``ranked=False`` trades each
+    market on its own sign (a score of 0 is flat but still counts in ``n``)."""
+    names = list(markets) if names is None else names
+    dates = np.asarray(dates, dtype="datetime64[D]")
+    frames, prev = [], dict.fromkeys(names, 0.0)
+    for start, end in zip(dates[:-1], dates[1:], strict=True):
+        have = [s for s in names if start in scores[s]]
+        if len(have) < min_markets:
+            continue
+        sig = _cross_signal(np.array([scores[s][start][0] for s in have]), ranked, half)
+        for s, x in zip(have, sig, strict=True):
+            w = x * target / scores[s][start][1]
+            frame = _held_span(markets[s], start, end, w, prev[s], len(have), cost)
+            if frame is not None:
+                frames.append(frame)
+                prev[s] = w
+        for s in set(names) - set(have):
+            prev[s] = 0.0
     j = pl.concat(frames).group_by("d").agg(pl.col("g").sum(), pl.col("n").sum()).sort("d")
     return j["d"].to_numpy().astype("datetime64[D]"), j["n"].to_numpy(), j["g"].to_numpy()

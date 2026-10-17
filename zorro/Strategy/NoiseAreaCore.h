@@ -102,6 +102,7 @@ var factorNow()
 
 #include "Heartbeat.h"
 #include "LiveRestart.h"
+#include "ExpiryGuard.h"
 
 function run()
 {
@@ -149,6 +150,7 @@ function run()
 	int k;
 	if(is(INITRUN)) {
 		liveRestart();
+		expiryGuard();
 #ifndef SIM
 		brokerCommand(SET_VOLTYPE, 4);   // trade volume, for the broker's history and live bars; IB's default is quote size
 #endif

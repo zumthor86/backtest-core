@@ -24,8 +24,10 @@
 // Sizing: 1 unit = 1 point of the adjusted price (History/AssetsZZ.csv); NOTIONAL / price units per trade.
 
 #include "ZZFactors.h"
+#define PG_GLOBEX                 // PriceGate.h: no prices while Globex is shut
 #include "Heartbeat.h"
 #include "LiveRestart.h"
+#include "ExpiryGuard.h"
 
 // Zorro takes one -d name per run, so the export to the end of the history is its own name.
 #ifdef STATE_LATEST
@@ -250,6 +252,9 @@ function run()
 #ifdef STATE_LATEST
 	EndDate = Command[1];        // a state export for a live start runs to the end of the history
 #endif
+#ifdef LIVETEST
+	if(Command[1]) EndDate = Command[1];   // the daily paper replay (backtest_core.zorro.paper) runs to the history's end
+#endif
 	robustCapital(NOTIONAL);
 	assetList("AssetsZZ");
 	asset(BK_ASSET);
@@ -258,6 +263,9 @@ function run()
 	Hedge = 2;
 	setf(TradeMode, TR_FRC);
 #else
+	set(NOLOCK);                // each sleeve has its own API connection (plugin copy, client ID): without this,
+	                            // every Zorro waits on any other that hangs, and one sleeve with no connection
+	                            // slowed all of them to a bar per 8 minutes (2026-10-14)
 	set(PRELOAD);               // the lookback comes from our .t6 history, the broker fills the days after it
 	set(LOGFILE);
 	assetList("AssetsLive");
@@ -269,6 +277,7 @@ function run()
 	int k;
 	if(is(INITRUN)) {
 		liveRestart();
+		expiryGuard();
 		ZBar = 0; ZState = 0; NP = 0; FI = 0; SessN = 0; HavePrevSess = 0; NR = 0; NB = 0; BarsInSess = 0;
 		D = NO_D; BB = 0; NW = 0; NA = 0; NSeen = 0; Pos = 0; TimeExit = 0;
 		PendP[0] = PendP[1] = -1;

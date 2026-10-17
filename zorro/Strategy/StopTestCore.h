@@ -7,6 +7,10 @@
 //
 // StopTest1.c: StopFactor only (what stop.txt describes).
 // StopTest2.c: StopFactor plus brokerCommand(SET_ORDERTYPE, 8), the "+8 STOP" order type (brokercommand.txt).
+// CloseTest.c: no stop at all: does Zorro's own close of a pool trade reach the broker? The sleeves' pool closes failed
+// with "Error 075 - closing not supported (NFA?)" on 10-14, 10-15 and 10-16. Each minute it prints the script's net
+// (LotsPhantom), Zorro's net at the broker (LotsPool) and the broker's own net (GET_POSITION). Turn on the Gateway's
+// API message log first (Configure, API, Settings): Error 075 may be any rejected close, and IB's reason is only there.
 // This Zorro version has no TR_BSTOP flag, although the manual names one.
 //
 // RUN BY THE USER, once per variant, with futures open and no sleeve holding MNQ (DipBuyNQ trades NQ only around the
@@ -35,16 +39,20 @@ function run()
 	if(is(INITRUN)) return;
 	hbBar();
 
+	printf("\nPositions: phantom %.0f pool %.0f broker %.0f", (var)LotsPhantom, (var)LotsPool,
+		brokerCommand(GET_POSITION, SymbolTrade));
 	if(TStep == 0) {
+#ifndef TEST_NO_STOP
 		Stop = TEST_STOP;
 		StopFactor = 1.5;
+#endif
 		Lots = 1;
 #ifdef STOP_TYPE_8
 		brokerCommand(SET_ORDERTYPE, 8);
 #endif
 		enterLong();
 		TStep = 1; TEnterBar = Bar;
-		printf("\nStopTest: bought 1 %s, Stop %.0f, StopFactor 1.5", Asset, Stop);
+		printf("\nStopTest: bought 1 %s, Stop %.0f, StopFactor %.1f", Asset, Stop, StopFactor);
 	} else if(TStep == 1 && Bar >= TEnterBar + TEST_HOLD_BARS) {
 		exitLong();
 		TStep = 2; TExitBar = Bar;

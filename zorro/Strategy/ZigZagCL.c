@@ -4,6 +4,7 @@
 #include <default.c>
 
 #define ZZ_ASSET "CL"
+#define PS_SOLE_OWNER          // PoolSync.h: the only sleeve on its broker instrument
 #define ZZ_EVENTS "Log\\ZigZagCL_events.csv"
 #define ZZ_WARM_EVENTS "Log\\ZigZagCL_warm_events.csv"
 #define ZZ_LIVE_EVENTS "Log\\ZigZagCL_live_events.csv"

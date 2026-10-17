@@ -2,6 +2,7 @@
 #include <default.c>
 
 #define DB_ASSET "NQ"
+#define PS_SOLE_OWNER          // PoolSync.h: the only sleeve on its broker instrument
 #define DB_TRADES "Log/DipBuyNQ_trades.csv"
 #define DB_TICK 0.25           // index points
 #define DB_TICK_USD 5.0        // $ per tick per contract

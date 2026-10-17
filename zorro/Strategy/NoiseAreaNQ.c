@@ -11,6 +11,7 @@
 #include "Robust.h"
 
 #define NA_ASSET "NQF"
+#define PS_SOLE_OWNER          // PoolSync.h: the only sleeve on its broker instrument
 #define NA_ASSETLIST "AssetsNoiseAreaNQ"
 #define NA_NF NQ_NF
 #define NA_FT NQ_FT

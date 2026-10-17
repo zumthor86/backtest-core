@@ -24,8 +24,10 @@
 // dollar P&L is the research engine's return at 1x notional times NOTIONAL.
 
 #include "ZZFactors.h"
+#define PG_GLOBEX                 // PriceGate.h: no prices while Globex is shut
 #include "Heartbeat.h"
 #include "LiveRestart.h"
+#include "ExpiryGuard.h"
 
 // -d LIVE (trade mode) trades ZZ_LIVE_LOTS whole contracts of the real contract behind ZZ_ASSET in
 //   History/AssetsLive.csv. The state (60 sessions of returns, then the zigzag) is rebuilt on every start from
@@ -169,6 +171,9 @@ function run()
 #endif
 #ifdef SIM
 	EndDate = 20260919;
+#ifdef LIVETEST
+	if(Command[1]) EndDate = Command[1];   // the daily paper replay (backtest_core.zorro.paper) runs to the history's end
+#endif
 	robustCapital(NOTIONAL);
 	assetList("AssetsZZ");
 	asset(ZZ_ASSET);
@@ -177,6 +182,9 @@ function run()
 	Hedge = 2;                  // the reversal's exit and entry are separate orders on the same bar
 	setf(TradeMode, TR_FRC);    // no rounding of fills to the point size
 #else
+	set(NOLOCK);                // each sleeve has its own API connection (plugin copy, client ID): without this,
+	                            // every Zorro waits on any other that hangs, and one sleeve with no connection
+	                            // slowed all of them to a bar per 8 minutes (2026-10-14)
 	set(PRELOAD);               // the lookback comes from our .t6 history, the broker fills the days after it
 	set(LOGFILE);
 	assetList("AssetsLive");
@@ -188,6 +196,7 @@ function run()
 	int k;
 	if(is(INITRUN)) {
 		liveRestart();
+		expiryGuard();
 		ZBar = 0; ZState = 0; NSig = 0; NSess = 0; HavePrevSess = 0; NR = 0; RestTake = 0; Pos = 0; FI = 0;
 		D = NO_D; RestD = NO_D; Seg1 = 0; Seg2 = 0; PivPrev = 0; DsigPrev = 1;
 		Avg3Cut = 2. - 0.67 / sqrt(3.);

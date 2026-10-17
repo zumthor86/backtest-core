@@ -7,8 +7,11 @@
 //
 // It only counts and writes. It sets no variable that a signal reads and sends no order.
 // Include it in a sleeve's core header and call hbBar() once per run() after the INITRUN return.
-// tock() also writes the sleeve's trade state (StateExport.h), because a script can define tock() only once.
+// tock() also writes the sleeve's trade state (StateExport.h), runs the futures price gate (PriceGate.h) and checks
+// Zorro's broker record against the broker (PoolSync.h), because a script can define tock() only once.
 #include "StateExport.h"
+#include "PriceGate.h"
+#include "PoolSync.h"
 #ifdef LIVE
 int HbTicks = 0;
 int HbBars = 0;
@@ -34,6 +37,7 @@ function tick()                        // each price quote, at most one per Tick
 
 function tock()                        // once a minute whether or not a quote arrived
 {
+	priceGate();
 	sprintf(HbFile, "Log\\Heartbeat_%s.csv", Script);
 	if(!file_length(HbFile))
 		file_append(HbFile, "now_utc,ticks_in_last_min,last_quote_utc,last_quote,live_bars,last_bar_utc,lookback_bars\n");
@@ -42,7 +46,7 @@ function tock()                        // once a minute whether or not a quote a
 	// While the lookback replays, tock() fires once per replayed minute with the replayed time; is(LOOKBACK) is not set
 	// there. No trade exists yet and the file would be rewritten tens of thousands of times, so write only when the
 	// time tock() sees is within 10 minutes of the real clock.
-	if(wdate(0) > wdate(NOW) - 10. / 1440) writeState();
+	if(wdate(0) > wdate(NOW) - 10. / 1440) { writeState(); poolSync(); }
 }
 #else
 function hbBar() {}

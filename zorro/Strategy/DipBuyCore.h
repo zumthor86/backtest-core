@@ -130,8 +130,10 @@ void loadState()
 }
 #endif
 
+#define PG_GLOBEX                 // PriceGate.h: no prices while Globex is shut
 #include "Heartbeat.h"
 #include "LiveRestart.h"
+#include "ExpiryGuard.h"
 
 function run()
 {
@@ -154,6 +156,9 @@ function run()
 #ifdef STATE_LATEST
 	EndDate = Command[1];        // a state export for a live start runs to the end of the history
 #endif
+#ifdef LIVETEST
+	if(Command[1]) EndDate = Command[1];   // the daily paper replay (backtest_core.zorro.paper) runs to the history's end
+#endif
 	robustCapital(NOTIONAL);
 	assetList("AssetsZZ");
 	asset(DB_ASSET);
@@ -161,6 +166,9 @@ function run()
 	Fill = 1;
 	setf(TradeMode, TR_FRC);
 #else
+	set(NOLOCK);                // each sleeve has its own API connection (plugin copy, client ID): without this,
+	                            // every Zorro waits on any other that hangs, and one sleeve with no connection
+	                            // slowed all of them to a bar per 8 minutes (2026-10-14)
 	assetList("AssetsIBPaper");
 	asset(DB_LIVE_ASSET);
 #endif
@@ -172,6 +180,7 @@ function run()
 
 	if(is(INITRUN)) {
 		liveRestart();
+		expiryGuard();
 		NBar = 0; FI = 0; InPos = 0; AU = 0; AD = 0; Stale = 0;
 #ifdef LIVE
 		loadState();

@@ -4,15 +4,20 @@ Needs the bar store (BARS_DIR) and the Hephaestus research record; skipped where
 """
 import os
 import re
+from datetime import date
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 import pytest
 
 from backtest_core import bars, sim, stats
 
 RECORD = Path("C:/Users/Christopher/Documents/python/Hephaestus/backtests/murphys_law/results_futures.txt")
 TICK = {"ES": (0.25, 12.5), "NQ": (0.25, 5.0)}
+# The record has an open end, so later bars move its numbers. Its every printed figure is reproduced on bars to
+# 2026-09-21 and no later (the next-open Sharpe falls under +1.005 by 2026-09-24): the study's data ended about then.
+RECORD_END = date(2026, 9, 21)
 
 pytestmark = pytest.mark.skipif(not (os.environ.get("BARS_DIR") and RECORD.exists()),
                                 reason="needs BARS_DIR and the Hephaestus record")
@@ -42,7 +47,7 @@ def _rsi2(c):
 
 
 def _dip_buy(m, fill):
-    d = bars.daily(m)
+    d = bars.daily(m).filter(pl.col("session") <= RECORD_END)
     o, h, l, c = (d[k].to_numpy() for k in ("open", "high", "low", "close"))
     r3 = np.r_[np.full(3, np.nan), c[3:] / c[:-3] - 1]
     q = _qpi(r3)
