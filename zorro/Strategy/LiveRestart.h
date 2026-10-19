@@ -2,6 +2,8 @@
 //
 // The Gateway restarts once a day and drops every API connection. Without this command the Zorro IB plugin kept its
 // dead connection. SET_RESTART makes the plugin release the API and log in again at the given HHMM time.
+// With it set, the sleeves still stayed disconnected on most nights (10-13 to 10-19), so Heartbeat.h's hbRelogin()
+// also logs in again when the feed stays dead.
 // Call liveRestart() once, in the INITRUN branch of run(), after the asset is selected.
 //
 // The restart is at 22:05 local on olympus (`restart_time_local` of the paper login in ares/gateway_logins.json), in

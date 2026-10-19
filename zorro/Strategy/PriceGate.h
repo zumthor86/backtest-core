@@ -10,6 +10,7 @@
 // Shut: Friday 17:00 to Sunday 17:59 New York, and 17:00 to 17:59 every weekday. Prices are taken again from 17:59,
 // one minute before the reopen, because tock() runs only once a minute. Holidays are not known here.
 // A futures sleeve defines PG_GLOBEX before it includes Heartbeat.h; Heartbeat.h's tock() calls priceGate().
+// globexShut() is defined for every live build: Heartbeat.h's re-login uses it too.
 #ifdef LIVE
 #ifndef SIM
 #ifdef PG_GLOBEX
@@ -18,9 +19,7 @@
 #endif
 #endif
 
-#ifdef PG_ON
-int PgShut = 0;
-
+#ifdef LIVE
 // New York time from UTC, the cores' own rule (Zorro's zone table is only documented to 2024).
 var pgEtFromUtc(var t)
 {
@@ -44,6 +43,10 @@ int globexShut(var utc)
 	if(minute >= 17 * 60 && minute < 17 * 60 + 59) return 1;   // the daily halt
 	return 0;
 }
+#endif
+
+#ifdef PG_ON
+int PgShut = 0;
 
 // Called from tock(). While the lookback replays, tock() sees the replayed time: the gate acts on real minutes only.
 function priceGate()
