@@ -20,7 +20,7 @@
 #define NA_LOTS 1
 #define NA_START 20100607
 #define NA_END 20261231
-#define NA_LIVE_LOOKBACK 30000 // the history holds every hour: about 21 days in a test; live keeps market hours only
+#define NA_LIVE_LOOKBACK 12000 // Zorro picks its start date from this count, not from market-hour bars: 8,000 loaded 12 sessions, 12,000 about 19; 14 are needed
 #define NA_SIGNAL_LOG "Log/NoiseAreaNQ_signals.csv"
 
 #include "NoiseAreaCore.h"

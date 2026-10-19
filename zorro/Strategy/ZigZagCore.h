@@ -191,6 +191,7 @@ function run()
 	asset(ZZ_ASSET);
 	Hedge = 4;                  // IB keeps one net position (NFA): Zorro holds the exit and the entry as separate
 	                            // trades and sends the net
+	nfaOn();
 #endif
 
 	int k;

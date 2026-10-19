@@ -40,6 +40,7 @@ SLEEVES: dict[str, tuple[str, str, str]] = {
 }
 #: a Zorro install's data folders; the copy takes everything else (the program, include, plugins, Zorro.ini)
 DATA_DIRS = {"History", "Data", "Log", "Cache", "Strategy", "Job"}
+BAR_DAYS = 14               # the reference bars exported for the live bar check: two weeks covers a missed morning run
 COLUMNS = ["script", "asset", "side", "lots", "entry_utc", "exit_utc", "entry_raw", "exit_raw", "exit_type",
            "open_at_end", "history_end_utc"]
 
@@ -140,6 +141,28 @@ def replay_one(script: str, end: date) -> pl.DataFrame:
     return trade_rows(script, trades, history_end, scale, bars_utc if scale == "adjusted" else None)
 
 
+def reference_bars(symbol: str, days: int = BAR_DAYS) -> pl.DataFrame:
+    """The last ``days`` of stored 1-minute bars on the raw (as-traded) scale, stamped with their close in UTC: the time
+    Zorro stamps its own live bar with. ``despiked`` marks a bar whose prices the store clipped (``despike``)."""
+    b = bars.intraday(symbol, "databento", "1m", ["start", "open", "high", "low", "close", "factor", "despiked"])
+    b = b.filter(pl.col("start") >= pl.col("start").max() - pl.duration(days=days))
+    return b.select(
+        (pl.col("start") + pl.duration(minutes=1)).dt.replace_time_zone("America/New_York")
+        .dt.convert_time_zone("UTC").dt.replace_time_zone(None).alias("close_utc"),
+        *((pl.col(c) / pl.col("factor")).round(6) for c in ("open", "high", "low", "close")), "despiked").sort("close_utc")
+
+
+def export_bars(out: Path, scripts: list[str]) -> dict[str, int]:
+    """``<out>/bars_<SYMBOL>.csv`` for each futures symbol the sleeves trade; argus compares them with the bars the live
+    sleeves built from the broker's feed (``Log/Bars_<Script>.csv``)."""
+    done = {}
+    for symbol in sorted({SLEEVES[s][0] for s in scripts}):
+        b = reference_bars(symbol)
+        b.write_csv(out / f"bars_{symbol}.csv")
+        done[symbol] = b.height
+    return done
+
+
 def replay(out: Path, scripts: list[str], end: date) -> int:
     _guard()
     out.mkdir(parents=True, exist_ok=True)
@@ -152,6 +175,12 @@ def replay(out: Path, scripts: list[str], end: date) -> int:
         print(f"history refresh failed: {status['history_error']}", flush=True)
         return 1
     failed = 0
+    try:
+        status["bars"] = export_bars(out, scripts)
+    except Exception as exc:  # noqa: BLE001 - reported, and the replay still runs
+        failed += 1
+        status["bars_error"] = f"{type(exc).__name__}: {exc}"
+        print(f"reference bars FAILED {status['bars_error']}", flush=True)
     for s in scripts:
         try:
             rows = replay_one(s, end)
@@ -172,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m backtest_core.zorro.paper")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("setup", help="create the replay copy of Zorro at ZORRO_DIR")
+    b = sub.add_parser("bars", help="only export the reference bars (bars_<SYMBOL>.csv) for the live bar check")
+    b.add_argument("--out", required=True, type=Path)
     p = sub.add_parser("replay", help="refresh the copy's history and rerun every paper sleeve with -d LIVETEST")
     p.add_argument("--out", required=True, type=Path, help="folder for replay_<Script>.csv and replay_status.json")
     p.add_argument("--scripts", default=",".join(SLEEVES), help="comma-separated sleeve scripts")
@@ -184,6 +215,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not os.environ.get("BARS_DIR"):
         raise SystemExit("BARS_DIR is not set: the replay reads the bar store")
+    if a.cmd == "bars":
+        a.out.mkdir(parents=True, exist_ok=True)
+        print(export_bars(a.out, list(SLEEVES)))
+        return 0
     return replay(a.out, [s.strip() for s in a.scripts.split(",") if s.strip()], a.end)
 
 

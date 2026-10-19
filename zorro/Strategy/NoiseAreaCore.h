@@ -145,6 +145,7 @@ function run()
 	assetList("AssetsLive");
 	asset(NA_ASSET);
 	Hedge = 4;                 // IB keeps one net position (NFA): an exit and an entry on one bar are sent as the net
+	nfaOn();
 #endif
 
 	int k;
