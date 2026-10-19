@@ -6,6 +6,9 @@ reader can see which days were blanked and why.
 
     python -m backtest_core.price_flags build     # needs HERMES_PRICES_DIR; rewrites the flags beside the store
 
+``universe.panel`` rebuilds them itself when they are missing or older than the store (``read_current``), so the
+command is only for a rebuild by hand.
+
 Reasons, and what the loader does with each:
 
 * ``spike``       a one-day jump of ``SPIKE_FACTOR`` or more that is back within ``SPIKE_UNDONE`` a day later:
@@ -20,11 +23,14 @@ The rules are the same ones the loader used before the flags existed, plus ``sta
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+log = logging.getLogger(__name__)
 
 SPIKE_FACTOR = 4.0            # a one-day price jump of this size (up or down) ...
 SPIKE_UNDONE = 2.0            # ... that is back within this factor of the prior price a day later is a bad tick
@@ -114,6 +120,18 @@ def read(prices_dir: str | os.PathLike, through) -> pl.DataFrame:
     return pl.read_parquet(path)
 
 
+def read_current(prices_dir: str | os.PathLike, through) -> pl.DataFrame:
+    """``read``, after a rebuild if the flags are missing or older than the store's last day. A rebuild scans the whole
+    store (about 15 s) and replaces the files atomically, so a study started meanwhile reads the old or the new flags,
+    never half of either."""
+    try:
+        return read(prices_dir, through)
+    except (FileNotFoundError, LookupError) as e:
+        log.warning("%s; rebuilding the price flags", e)
+        build(prices_dir)
+        return read(prices_dir, through)
+
+
 def apply(prices: np.ndarray, days: np.ndarray, codes: np.ndarray, flags: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """``prices`` with the flagged prices blanked and then restated on one scale, and a days-by-codes mask of the
     scale breaks (the daily return on those days is to be blanked).
@@ -147,12 +165,17 @@ def build(prices_dir: str | os.PathLike | None = None, start: str = "2006-01-01"
     flags = detect(days, codes.tolist(), raw)
     path = flags_path(prices_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    flags.write_parquet(path)
+    tmp = path.with_name("price_flags.tmp.parquet")
+    flags.write_parquet(tmp)
+    tmp.replace(path)
     counts = {r: int((flags["reason"] == r).sum()) for r in ("spike", "stale", "scale_break")}
-    path.with_name("built.json").write_text(json.dumps(
+    meta = path.with_name("built.json")
+    tmp_meta = meta.with_name("built.tmp.json")
+    tmp_meta.write_text(json.dumps(
         {"built_through": str(days[-1]), "start": start, "codes": len(codes), "counts": counts,
          "rules": {"SPIKE_FACTOR": SPIKE_FACTOR, "SPIKE_UNDONE": SPIKE_UNDONE, "STALE_RUN": STALE_RUN,
                    "SCALE_BREAK_UP": SCALE_BREAK_UP, "SCALE_BREAK_DOWN": SCALE_BREAK_DOWN}}, indent=1))
+    tmp_meta.replace(meta)        # last: `read` trusts the flags only once this says how far they go
     return flags
 
 

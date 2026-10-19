@@ -106,7 +106,7 @@ def panel(index: str = "R3000", start: date | str = "2006-01-01", prices_dir: st
     stays = listings(db_url)
     days, codes, raw, open_rel = price_matrix(prices_dir, start)
     # Bad prices are named in the flags built beside the store (``price_flags``); the files are never edited.
-    by_code, ret_blank = price_flags.apply(raw, days, codes, price_flags.read(prices_dir, days[-1]))
+    by_code, ret_blank = price_flags.apply(raw, days, codes, price_flags.read_current(prices_dir, days[-1]))
     stays = stays.filter(pl.col("eodhd_code").is_in(codes.tolist()))
     cols = codes.searchsorted(stays["eodhd_code"].to_numpy())
     ac, ret_blank, open_rel = by_code[:, cols], ret_blank[:, cols], open_rel[:, cols]

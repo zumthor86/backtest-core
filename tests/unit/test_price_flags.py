@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import polars as pl
 
 from backtest_core import price_flags as pf
@@ -64,3 +65,24 @@ def test_flags_older_than_the_store_are_refused(tmp_path):
         pass
     else:
         raise AssertionError("stale flags were accepted")
+
+
+def test_read_current_rebuilds_stale_flags(tmp_path, monkeypatch):
+    store = tmp_path / "research_prices"
+    store.mkdir()
+    built = []
+
+    def fake_build(prices_dir):
+        built.append(prices_dir)
+        path = pf.flags_path(prices_dir)
+        path.parent.mkdir(exist_ok=True)
+        pl.DataFrame(schema=pf.SCHEMA).write_parquet(path)
+        path.with_name("built.json").write_text('{"built_through": "2020-01-11"}')
+
+    monkeypatch.setattr(pf, "build", fake_build)
+    assert pf.read_current(store, np.datetime64("2020-01-11")).is_empty()      # missing: built
+    assert pf.read_current(store, np.datetime64("2020-01-11")).is_empty()      # current: left alone
+    assert len(built) == 1
+    with pytest.raises(LookupError):                                           # a rebuild that does not catch up raises
+        pf.read_current(store, np.datetime64("2020-01-12"))
+    assert len(built) == 2
