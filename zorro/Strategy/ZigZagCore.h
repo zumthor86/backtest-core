@@ -192,8 +192,8 @@ function run()
 	set(LOGFILE);
 	assetList("AssetsLive");
 	asset(ZZ_ASSET);
-	Hedge = 4;                  // IB keeps one net position (NFA): Zorro holds the exit and the entry as separate
-	                            // trades and sends the net
+	Hedge = 0;                  // IB keeps one net position (NFA), so Zorro does too: the entry closes the opposite
+	                            // trade. The backtest (Hedge 2) and this give the same trades (2026-10-20)
 	nfaOn();
 #endif
 

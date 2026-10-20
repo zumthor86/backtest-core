@@ -128,6 +128,9 @@ function run()
 	Slippage = 0;
 	Commission = NA_COST * robustCostMult();
 	Fill = 3;                  // market orders fill at the next bar's open
+#ifdef HEDGE0
+	Hedge = 0;                 // test build: one position per asset, as the live account allows
+#endif
 #else
 	set(PRELOAD);              // the lookback comes from our .t6 history, the broker fills the days after it
 	set(LOGFILE);
@@ -144,7 +147,7 @@ function run()
 	BarMode = BR_MARKET + BR_WEEKEND + BR_SLEEP;
 	assetList("AssetsLive");
 	asset(NA_ASSET);
-	Hedge = 4;                 // IB keeps one net position (NFA): an exit and an entry on one bar are sent as the net
+	Hedge = 0;                 // IB keeps one net position (NFA), so Zorro does too. The backtest gives the same trades
 	nfaOn();
 #endif
 
