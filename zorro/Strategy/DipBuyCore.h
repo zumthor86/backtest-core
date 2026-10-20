@@ -171,6 +171,7 @@ function run()
 	                            // slowed all of them to a bar per 8 minutes (2026-10-14)
 	assetList("AssetsIBPaper");
 	asset(DB_LIVE_ASSET);
+	nfaOn();                    // the account is NFA: without the flag Zorro's own close never reaches IB (Error 075)
 #endif
 
 	var qpiMax = robustParam(30, 10, 50, 5) / 100.;

@@ -261,6 +261,9 @@ function run()
 	Spread = 0; Slippage = 0; Penalty = 0;
 	Fill = 1;
 	Hedge = 2;
+#ifdef HEDGE0
+	Hedge = 0;                  // test build: one position per asset, as the live account allows
+#endif
 	setf(TradeMode, TR_FRC);
 #else
 	set(NOLOCK);                // each sleeve has its own API connection (plugin copy, client ID): without this,

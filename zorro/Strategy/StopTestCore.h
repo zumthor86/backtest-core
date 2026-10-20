@@ -24,6 +24,9 @@
 #define TEST_STOP 35.            // MES points, about 0.5% of the price
 #define TEST_HOLD_BARS 4
 #define TEST_AFTER_BARS 4
+#ifndef TEST_HEDGE
+#define TEST_HEDGE 4
+#endif
 
 #include "Heartbeat.h"           // also exercises the state export with a real trade
 
@@ -33,7 +36,7 @@ function run()
 {
 	BarPeriod = 1;
 	LookBack = 0;
-	Hedge = 4;                   // as the sleeves: virtual hedging, only the net position reaches the broker
+	Hedge = TEST_HEDGE;          // 4 as the sleeves: virtual hedging, only the net position reaches the broker
 #ifndef TEST_NO_NFA
 	nfaOn();                     // as the sleeves since 10-19
 #endif

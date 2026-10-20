@@ -180,6 +180,9 @@ function run()
 	Spread = 0; Slippage = 0; Penalty = 0;
 	Fill = 1;                   // stops fill at the level or at the open when the bar gaps through it
 	Hedge = 2;                  // the reversal's exit and entry are separate orders on the same bar
+#ifdef HEDGE0
+	Hedge = 0;                  // test build: one position per asset, as the live account allows
+#endif
 	setf(TradeMode, TR_FRC);    // no rounding of fills to the point size
 #else
 	set(NOLOCK);                // each sleeve has its own API connection (plugin copy, client ID): without this,
