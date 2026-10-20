@@ -75,7 +75,7 @@ daily restart) is in `ares/docs/gateway.md`.
 | `Log\<Script>_demo.log` | Zorro, rewritten at each start | a person, only after the sleeve stops: a reader while Zorro runs makes it stop logging |
 | `Log\Heartbeat_<Script>.csv`, `Bars_<Script>.csv` | `Heartbeat.h` | `argus` health, the bar check |
 | `Log\State_<Script>.csv` | `StateExport.h` | `argus state` and the reconcile |
-| `Log\PoolSync_<Script>.csv` | `PoolSync.h` | a person |
+| `Log\PoolSync_<Script>.csv` | `PoolSync.h`: each change in the comparison of the script's net, Zorro's pool and the broker. No line while the feed is dead (at most 1 quote a minute): a dead connection reads the broker as flat | a person |
 | `Log\Relogin_<Script>.csv` | `Heartbeat.h`: one line per re-login try (time, quiet since, `login(1)` result) | a person |
 | `Log\Errors.txt` | Zorro: every error line, all scripts | `argus` alerts |
 

@@ -100,9 +100,10 @@ function tock()                        // once a minute whether or not a quote a
 	// there. No trade exists yet and the file would be rewritten tens of thousands of times, so act only when the
 	// time tock() sees is within 10 minutes of the real clock.
 	int real = wdate(0) > wdate(NOW) - 10. / 1440;
+	int feedAlive = HbTicks > 1;
 	if(real) hbRelogin();
 	HbTicks = 0;
-	if(real) { writeState(); poolSync(); }
+	if(real) { writeState(); poolSync(feedAlive); }
 }
 #else
 function hbBar() {}

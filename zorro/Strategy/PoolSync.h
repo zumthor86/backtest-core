@@ -16,6 +16,9 @@
 //   - GET_POSITION must first have returned this pool's own nonzero position once since the start, which shows the
 //     command works for this symbol. A command that is not supported returns 0, which would look like a flat broker.
 // A close that failed (pool and broker still hold, script flat) is only logged: fixing it needs an order.
+// tock() passes feedAlive (more than 1 quote in the last minute). On a dead connection GET_POSITION also returns 0: on
+// 2026-10-19 DipBuyNQ read the broker as flat from 21:09 to 22:06 UTC while it held MNQ and tried a cancel six times.
+// Without a live feed the check is skipped and the stale count starts again.
 #ifdef LIVE
 #define PS_STALE_MIN 3
 int PsVerified = 0;
@@ -32,8 +35,9 @@ function psLog(int code, var phantom, var pool, var held, char* what)
 		PsVerified, code, what));
 }
 
-function poolSync()
+function poolSync(int feedAlive)
 {
+	if(!feedAlive) { PsStale = 0; return; }
 	var phantom = LotsPhantom;
 	var pool = LotsPool;
 	var held = brokerCommand(GET_POSITION, SymbolTrade);
@@ -65,5 +69,5 @@ function poolSync()
 #endif
 }
 #else
-function poolSync() {}
+function poolSync(int feedAlive) {}
 #endif
