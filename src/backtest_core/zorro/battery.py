@@ -118,28 +118,29 @@ def run_battery(script: str, modes=(0, 1, 2, 3, 4, 5, 6, 7), out_dir: Path | str
             for k in range(6):
                 b.close_times.append(run(script, 1, k).sharpe)
                 _keep(script, f"close{k}", out)
-        elif m == 2:
-            b.detrend_trades = run(script, 2).sharpe
-            _keep(script, "detrend_trades", out)
-        elif m == 3:
-            b.detrend_curve = run(script, 3).sharpe
-            _keep(script, "detrend_curve", out)
         elif m == 4:
-            mrc = paths.log_dir() / f"{script}_mrc.csv"
-            run(script, 4, output=mrc, timeout=None)         # many cycles, hours on 1-minute bars; writes only our CSV
-            b.mrc_pf, b.mrc_p, b.mrc_cycles = mrc_result(mrc)
-            if out is not None:
-                out.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(mrc, out / mrc.name)
+            _run_mrc(script, b, out)
         elif m == 5:
             b.monte_carlo = run(script, 5).monte_carlo
             _keep(script, "montecarlo", out)
-        elif m == 6:
-            b.costs_x2 = run(script, 6).sharpe
-            _keep(script, "costs_x2", out)
-        elif m == 7:
-            b.invert = run(script, 7).sharpe
-            _keep(script, "invert", out)
+        elif m in _SHARPE_MODES:
+            field, tag = _SHARPE_MODES[m]
+            setattr(b, field, run(script, m).sharpe)
+            _keep(script, tag, out)
         else:
             raise ValueError(f"mode {m} is a training mode; use plateau() / walk_forward()")
     return b
+
+
+# mode -> (Battery field that takes the run's Sharpe, tag of the kept report)
+_SHARPE_MODES = {2: ("detrend_trades", "detrend_trades"), 3: ("detrend_curve", "detrend_curve"),
+                 6: ("costs_x2", "costs_x2"), 7: ("invert", "invert")}
+
+
+def _run_mrc(script: str, b: Battery, out: Path | None) -> None:
+    mrc = paths.log_dir() / f"{script}_mrc.csv"
+    run(script, 4, output=mrc, timeout=None)         # many cycles, hours on 1-minute bars; writes only our CSV
+    b.mrc_pf, b.mrc_p, b.mrc_cycles = mrc_result(mrc)
+    if out is not None:
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(mrc, out / mrc.name)

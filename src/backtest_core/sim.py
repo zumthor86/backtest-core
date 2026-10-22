@@ -51,42 +51,60 @@ def run(open_, close, enter, exit_, valid, cost_rt, side: int = 1, fill: str = "
 
     n = len(c)
     ret = np.zeros(n)
-    pos, entry_px, pend, held = 0, 0.0, 0, 0
     trades: list[float] = []
     ent_idx: list[int] = []
     ext_idx: list[int] = []
-    for t in range(1, n):
-        if fill == "open" and pend:
-            if pend == 1:
-                pos, entry_px = 1, o[t]
-                ent_idx.append(t)
-                ret[t] += side * (c[t] / o[t] - 1) - cost[t] / 2
-            else:
-                ret[t] += side * (o[t] / c[t - 1] - 1) - cost[t] / 2
-                trades.append(side * (o[t] / entry_px - 1) - cost[t])
-                ext_idx.append(t)
-                pos = 0
+    loop = _loop_close if fill == "close" else _loop_open
+    held = loop(o, c, enter, exit_, valid, cost, side, ret, trades, ent_idx, ext_idx)
+    start = int(np.argmax(valid))
+    return Result(ret[start:], np.array(trades), np.array(ent_idx), np.array(ext_idx), start,
+                  held / max(n - start, 1))
+
+
+def _loop_close(o, c, enter, exit_, valid, cost, side, ret, trades, ent_idx, ext_idx) -> int:
+    """Act at the signal bar's close. Fills ``ret`` and the lists in place; returns the number of bars held."""
+    pos, entry_px, held = 0, 0.0, 0
+    for t in range(1, len(c)):
+        if pos:
+            ret[t] += side * (c[t] / c[t - 1] - 1)
+        held += pos
+        if not valid[t]:
+            continue
+        if pos and exit_[t]:
+            trades.append(side * (c[t] / entry_px - 1) - cost[t])
+            ext_idx.append(t)
+            ret[t] -= cost[t] / 2
+            pos = 0
+        elif not pos and enter[t]:
+            pos, entry_px = 1, c[t]
+            ent_idx.append(t)
+            ret[t] -= cost[t] / 2
+    return held
+
+
+def _loop_open(o, c, enter, exit_, valid, cost, side, ret, trades, ent_idx, ext_idx) -> int:
+    """Act at the next bar's open: a signal sets ``pend`` and the next bar fills it, so ``pend`` is clear when a
+    bar's own signals are read."""
+    pos, entry_px, pend, held = 0, 0.0, 0, 0
+    for t in range(1, len(c)):
+        if pend == 1:
+            pos, entry_px = 1, o[t]
+            ent_idx.append(t)
+            ret[t] += side * (c[t] / o[t] - 1) - cost[t] / 2
+            pend = 0
+        elif pend:
+            ret[t] += side * (o[t] / c[t - 1] - 1) - cost[t] / 2
+            trades.append(side * (o[t] / entry_px - 1) - cost[t])
+            ext_idx.append(t)
+            pos = 0
             pend = 0
         elif pos:
             ret[t] += side * (c[t] / c[t - 1] - 1)
         held += pos
         if not valid[t]:
             continue
-        if pos and exit_[t] and not (fill == "open" and pend):
-            if fill == "close":
-                trades.append(side * (c[t] / entry_px - 1) - cost[t])
-                ext_idx.append(t)
-                ret[t] -= cost[t] / 2
-                pos = 0
-            else:
-                pend = -1
+        if pos and exit_[t]:
+            pend = -1
         elif not pos and enter[t]:
-            if fill == "close":
-                pos, entry_px = 1, c[t]
-                ent_idx.append(t)
-                ret[t] -= cost[t] / 2
-            else:
-                pend = 1
-    start = int(np.argmax(valid))
-    return Result(ret[start:], np.array(trades), np.array(ent_idx), np.array(ext_idx), start,
-                  held / max(n - start, 1))
+            pend = 1
+    return held
