@@ -25,7 +25,7 @@
 #define TEST_HOLD_BARS 4
 #define TEST_AFTER_BARS 4
 #ifndef TEST_HEDGE
-#define TEST_HEDGE 4
+#define TEST_HEDGE 0
 #endif
 
 #include "Heartbeat.h"           // also exercises the state export with a real trade
@@ -36,7 +36,7 @@ function run()
 {
 	BarPeriod = 1;
 	LookBack = 0;
-	Hedge = TEST_HEDGE;          // 4 as the sleeves: virtual hedging, only the net position reaches the broker
+	Hedge = TEST_HEDGE;          // 0 as the sleeves (CloseTest.c keeps 4, the mode the sleeves ran until 2026-10-20)
 #ifndef TEST_NO_NFA
 	nfaOn();                     // as the sleeves since 10-19
 #endif

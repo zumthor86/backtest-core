@@ -20,6 +20,11 @@
 // trades stay. It runs after HB_RELOGIN_MIN real minutes with at most 1 quote a minute while the market is open, and
 // again each HB_RELOGIN_MIN minutes until quotes come back. A disconnected sleeve still gets a quote now and then (one
 // a reconnect attempt), and a healthy one gets at least 5 a minute. Each attempt is a line in Log\Relogin_<Script>.csv.
+// The Gateway's nightly restart (22:05 UK local) drops every API connection, and the plugin does not get it back by
+// itself, although the Gateway is up again after 15 seconds (2026-10-22: no sleeve held a connection 15 minutes later).
+// During the halt that follows, IB sends the same settlement price about 97 times a minute, so the dead-feed test above
+// cannot see it. hbScheduledRelogin() therefore logs in again once a night, HB_SCHED_AFTER_MIN minutes after the restart,
+// whatever the market does.
 #include "StateExport.h"
 #include "PriceGate.h"
 #include "PoolSync.h"
@@ -75,6 +80,48 @@ int hbMarketOpen(var utc)
 	return 1;
 }
 
+// UK local time is UTC+1 from 01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of October.
+var hbLastSunday(int y, int month)      // the last Sunday before the 1st of the next month
+{
+	var d1 = dmy(y * 10000 + (month + 1) * 100 + 1);
+	int back = ((int)floor(d1) + 6) % 7;
+	if(back == 0) back = 7;
+	return d1 - back;
+}
+
+var hbUkOffsetHours(var utc)
+{
+	int y = ymd(utc) / 10000;
+	if(utc >= hbLastSunday(y, 3) + 1. / 24 && utc < hbLastSunday(y, 10) + 1. / 24) return 1;
+	return 0;
+}
+
+#define HB_GATEWAY_RESTART_MIN (22 * 60 + 5)    // ares/gateway_logins.json restart_time_local of the paper login
+#define HB_SCHED_AFTER_MIN 3
+#define HB_SCHED_RETRY_MIN 2
+#define HB_SCHED_TRIES 5                // after that hbRelogin() is the fallback
+int HbSchedTries = 0;
+int HbSchedDay = 0;                     // the UTC day whose scheduled login is done
+var HbSchedNext = 0;                    // after a failed try, the earliest time for the next one
+
+function hbScheduledRelogin(var now)
+{
+	int today = (int)floor(now);
+	if(HbSchedDay == today) return;
+	var due = today + (HB_GATEWAY_RESTART_MIN + HB_SCHED_AFTER_MIN) / 1440. - hbUkOffsetHours(now) / 24.;
+	if(HbSchedDay == 0 && now > due) { HbSchedDay = today; return; }    // started after the restart: the start logged in
+	if(now < due || now < HbSchedNext) return;
+	printf("\nGateway restarted: logging in again");
+	login(4);
+	int ok = login(1);
+	printf("\nLogin again: %i", ok);
+	sprintf(HbReloginFile, "Log\\Relogin_%s.csv", Script);
+	if(!file_length(HbReloginFile)) file_append(HbReloginFile, "now_utc,quiet_since_utc,logged_in\n");
+	file_append(HbReloginFile, strf("%.8f,0,%i\n", now, ok));
+	if(ok || ++HbSchedTries >= HB_SCHED_TRIES) { HbSchedDay = today; HbSchedTries = 0; }
+	else HbSchedNext = now + HB_SCHED_RETRY_MIN / 1440.;
+}
+
 function hbRelogin()
 {
 	var now = wdate(NOW);
@@ -92,6 +139,7 @@ function hbRelogin()
 }
 #else
 function hbRelogin() {}
+function hbScheduledRelogin(var now) {}
 #endif
 
 function tock()                        // once a minute whether or not a quote arrived
@@ -106,7 +154,7 @@ function tock()                        // once a minute whether or not a quote a
 	// time tock() sees is within 10 minutes of the real clock.
 	int real = wdate(0) > wdate(NOW) - 10. / 1440;
 	int feedAlive = HbTicks > 1;
-	if(real) hbRelogin();
+	if(real) { hbScheduledRelogin(wdate(NOW)); hbRelogin(); }
 	HbTicks = 0;
 	if(real) { writeState(); poolSync(feedAlive); }
 }
