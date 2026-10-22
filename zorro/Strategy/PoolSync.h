@@ -7,15 +7,16 @@
 // The manual's remedy: compare brokerCommand(GET_POSITION) with LotsPool, and cancelTrade a position closed outside
 // Zorro (cancelTrade sends no order).
 //
-// Each minute this compares LotsPhantom (the script's own net), LotsPool (Zorro's net at the broker) and the broker's
-// net, and appends a line to Log\PoolSync_<Script>.csv whenever the three disagree or the state changes.
-// It cancels only in one case: the script is flat, Zorro's pool holds a position, and the broker holds none in that
+// Each minute this compares LotsPool (Zorro's net at the broker) with the broker's net, and appends a line to
+// Log\PoolSync_<Script>.csv whenever they disagree or the state changes. Every sleeve runs Hedge 0 (2026-10-20), where
+// the script's trade is the real one and LotsPhantom is always 0: it is still written to the file, but no code uses it.
+// It cancels only in one case: Zorro's pool holds a position, and the broker holds none in that
 // instrument for PS_STALE_MIN checks in a row. Two conditions keep it from cancelling a real position:
 //   - PS_SOLE_OWNER: only a sleeve that is the one sleeve on its broker instrument may cancel. All sleeves share one
 //     account, so for two sleeves on one instrument (ZigZagGC and BreakGC on MGC) the broker net is not this sleeve's.
 //   - GET_POSITION must first have returned this pool's own nonzero position once since the start, which shows the
 //     command works for this symbol. A command that is not supported returns 0, which would look like a flat broker.
-// A close that failed (pool and broker still hold, script flat) is only logged: fixing it needs an order.
+// A close that failed (Zorro flat, the broker still holds) is only logged (code 1): fixing it needs an order.
 // tock() passes feedAlive (more than 1 quote in the last minute). On a dead connection GET_POSITION also returns 0: on
 // 2026-10-19 DipBuyNQ read the broker as flat from 21:09 to 22:06 UTC while it held MNQ and tried a cancel six times.
 // Without a live feed the check is skipped and the stale count starts again.
@@ -42,17 +43,18 @@ function poolSync(int feedAlive)
 	var pool = LotsPool;
 	var held = brokerCommand(GET_POSITION, SymbolTrade);
 	if(pool != 0 && held == pool) PsVerified = 1;
-	// code 0 agree; 1 failed send (pool = broker, script differs); 2 stale pool (script flat, broker flat);
-	// 3 other mismatch (order in flight, or a shared instrument)
+	// code 0 agree; 1 the broker holds a position Zorro does not (a close that was not sent, a hand trade, or another
+	// sleeve on a shared instrument); 2 Zorro holds a position the broker does not (an entry that never reached the
+	// broker, or a position closed by hand); 3 other mismatch (an order in flight)
 	int code = 3;
-	if(phantom == pool && pool == held) code = 0;
-	else if(pool == held) code = 1;
-	else if(phantom == 0 && pool != 0 && held == 0) code = 2;
+	if(pool == held) code = 0;
+	else if(pool == 0) code = 1;
+	else if(held == 0) code = 2;
 	if(code == 2) PsStale++; else PsStale = 0;
 	if(code != PsLastCode) {
 		if(code == 0) psLog(code, phantom, pool, held, "agree");
-		if(code == 1) psLog(code, phantom, pool, held, "Zorro did not send the change to the broker");
-		if(code == 2) psLog(code, phantom, pool, held, "Zorro holds a pool position the broker does not");
+		if(code == 1) psLog(code, phantom, pool, held, "the broker holds a position Zorro does not");
+		if(code == 2) psLog(code, phantom, pool, held, "Zorro holds a position the broker does not");
 		if(code == 3) psLog(code, phantom, pool, held, "mismatch");
 		PsLastCode = code;
 	}
