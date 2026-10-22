@@ -58,14 +58,19 @@ var HbQuietSince = 0;
 char HbReloginFile[80];
 
 // Globex open and, for a sleeve with its own session (BR_MARKET: NoiseAreaNQ, BarZone UTC), inside StartMarket..EndMarket:
-// out of its session Zorro passes it no quotes, connected or not.
+// out of its session Zorro passes it no quotes, connected or not, so a dead connection cannot be told from the
+// quiet there. The Gateway restarts at 21:05 UTC, after that session ended, so the window opens HB_SESSION_LEAD_MIN
+// before StartMarket: the quiet then counts as a dead feed and the relogin fires before the first bar. It runs on
+// every session day and does no harm to a healthy connection (open trades stay).
+#define HB_SESSION_LEAD_MIN 15
+int hbMinutes(int hhmm) { return (hhmm / 100) * 60 + hhmm % 100; }
+
 int hbMarketOpen(var utc)
 {
 	if(globexShut(utc)) return 0;
 	if(BarMode & BR_MARKET) {
-		var d = utc - floor(utc);
-		int hhmm = (int)floor(d * 24) * 100 + ((int)floor(d * 1440)) % 60;
-		if(hhmm < StartMarket || hhmm >= EndMarket) return 0;
+		int minute = (int)floor((utc - floor(utc)) * 1440);
+		if(minute < hbMinutes(StartMarket) - HB_SESSION_LEAD_MIN || minute >= hbMinutes(EndMarket)) return 0;
 	}
 	return 1;
 }

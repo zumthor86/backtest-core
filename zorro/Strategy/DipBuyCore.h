@@ -172,6 +172,8 @@ function run()
 	assetList("AssetsIBPaper");
 	asset(DB_LIVE_ASSET);
 	nfaOn();                    // the account is NFA: without the flag Zorro's own close never reaches IB (Error 075)
+	Hedge = 0;                  // IB keeps one net position (NFA), so Zorro does too, as the other sleeves (2026-10-22). The
+	                            // sleeve is long only: it never holds an opposite trade, so the trades do not change
 #endif
 
 	var qpiMax = robustParam(30, 10, 50, 5) / 100.;
