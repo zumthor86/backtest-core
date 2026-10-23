@@ -13,6 +13,11 @@
 // -d TEST_NO_NFA leaves it out. Each minute it prints the script's net (LotsPhantom), Zorro's net at the broker
 // (LotsPool), the broker's own net (GET_POSITION) and the NFA flag.
 // This Zorro version has no TR_BSTOP flag, although the manual names one.
+// TagTest.c (it defines TEST_TAG): does a text in SET_ORDERTEXT reach IB as the order's orderRef? Zorro's own orderRef is the word
+// "Zorro", so the fills of the sleeves cannot be told apart in the Flex report (which has no client ID). The test sets the
+// text once, before the entry only; the manual says a brokerCommand text stays until it is changed, so the close must
+// carry it too. Read the result with `python -m ares.services.fill_capture` (in ares\) and the Trades pane: the
+// order_ref of the two client-7 fills.
 //
 // RUN BY THE USER, once per variant, with futures open and no sleeve running on MES (BreakES is its only sleeve),
 // on the spare account row IB-Paper-7 (IBKR client ID 7):
@@ -54,6 +59,9 @@ function run()
 		StopFactor = 1.5;
 #endif
 		Lots = 1;
+#ifdef TEST_TAG
+		printf("\nTagTest: SET_ORDERTEXT '%s' returned %.0f", TEST_TAG, brokerCommand(SET_ORDERTEXT, TEST_TAG));
+#endif
 #ifdef STOP_TYPE_8
 		brokerCommand(SET_ORDERTYPE, 8);
 #endif
