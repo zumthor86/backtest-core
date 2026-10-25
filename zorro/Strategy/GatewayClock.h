@@ -54,5 +54,23 @@ int gwRestartLocalHhmm(var utc, int afterMin)  // the restart plus a few minutes
 	int m = (gwRestartUtcMinute(utc) + afterMin + 60 * gwUkOffsetHours(utc)) % 1440;
 	return (m / 60) * 100 + m % 60;
 }
+
+#define GW_LOGIN_AFTER_MIN 3                   // the nightly scheduled login comes this long after the restart
+
+// What the nightly scheduled login does now: 0 nothing yet, 1 it is handled without a login (the run started after the
+// restart, so its own login came after it), 2 log in. `started` is when this run first asked, `doneDay` the UTC day already
+// handled (0 = none since the start), `notBefore` the earliest time for a retry.
+// A late start is told by the START time, not by the time of the first call after the due time: on 2026-10-25 the sleeves'
+// loops froze for 4.7 minutes across it at the restart, the first call after it was taken for a late start, and no sleeve
+// logged in until the slower fallback 17 minutes later.
+int gwSchedAction(var started, var now, int doneDay, var notBefore)
+{
+	int today = (int)floor(now);
+	if(doneDay == today) return 0;
+	var due = today + (gwRestartUtcMinute(now) + GW_LOGIN_AFTER_MIN) / 1440.;
+	if(doneDay == 0 && started > due) return 1;
+	if(now < due || now < notBefore) return 0;
+	return 2;
+}
 #endif
 #endif

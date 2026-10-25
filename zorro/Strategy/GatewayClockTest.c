@@ -60,6 +60,20 @@ function main()
 	at(20260330, 1200, 4, 1, 21 * 60 + 5, 2210);
 	// the scheduled login (3 minutes after the restart) stays on the same UTC day
 	check(20261203, 1200, "scheduled login, minute of the UTC day", gwRestartUtcMinute(dmy(20261203) + 0.5) + 3, 22 * 60 + 8);
+	// the nightly scheduled login, winter time: restart 22:05 UTC, due 22:08 UTC. Arguments: started, now, doneDay, notBefore
+	var day = dmy(20261203);
+	var due = day + 22. / 24 + 8. / 1440;
+	// the sleeve started at 21:09 and its loop froze across 22:08 (2026-10-25: 22:05:00 to 22:09:44): it must log in
+	check(20261203, 2209, "frozen loop is not a late start", gwSchedAction(day + 21. / 24 + 9. / 1440, day + 22. / 24 + 9. / 1440 + 44. / 86400, 0, 0), 2);
+	check(20261203, 2130, "before the due time", gwSchedAction(day + 21. / 24 + 9. / 1440, day + 21. / 24 + 30. / 1440, 0, 0), 0);
+	check(20261203, 2208, "at the due time", gwSchedAction(day + 21. / 24 + 9. / 1440, due, 0, 0), 2);
+	// started after the due time: its own login came after the restart, so nothing to do
+	check(20261203, 2220, "late start", gwSchedAction(day + 22. / 24 + 20. / 1440, day + 22. / 24 + 21. / 1440, 0, 0), 1);
+	// already handled today, or a failed try waiting for its retry
+	check(20261203, 2230, "done today", gwSchedAction(day + 21. / 24, day + 22. / 24 + 30. / 1440, (int)day, 0), 0);
+	check(20261203, 2210, "waiting for a retry", gwSchedAction(day + 21. / 24, day + 22. / 24 + 10. / 1440, 0, day + 22. / 24 + 12. / 1440), 0);
+	// a run that has been up since yesterday still logs in tonight (its done day is yesterday)
+	check(20261203, 2209, "running since yesterday", gwSchedAction(day - 1 + 23. / 24, day + 22. / 24 + 9. / 1440, (int)day - 1, 0), 2);
 	if(Fails == 0) note("PASS"); else note("FAIL");
 	quit("GatewayClockTest done");
 }

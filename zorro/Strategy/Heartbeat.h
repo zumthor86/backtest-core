@@ -23,7 +23,7 @@
 // The Gateway's nightly restart (17:05 New York time, GatewayClock.h) drops every API connection, and the plugin does not get it back by
 // itself, although the Gateway is up again after 15 seconds (2026-10-22: no sleeve held a connection 15 minutes later).
 // During the halt that follows, IB sends the same settlement price about 97 times a minute, so the dead-feed test above
-// cannot see it. hbScheduledRelogin() therefore logs in again once a night, HB_SCHED_AFTER_MIN minutes after the restart,
+// cannot see it. hbScheduledRelogin() therefore logs in again once a night, GW_LOGIN_AFTER_MIN minutes after the restart,
 // whatever the market does.
 #include "GatewayClock.h"
 #include "StateExport.h"
@@ -81,20 +81,20 @@ int hbMarketOpen(var utc)
 	return 1;
 }
 
-#define HB_SCHED_AFTER_MIN 3
 #define HB_SCHED_RETRY_MIN 2
 #define HB_SCHED_TRIES 5                // after that hbRelogin() is the fallback
 int HbSchedTries = 0;
 int HbSchedDay = 0;                     // the UTC day whose scheduled login is done
 var HbSchedNext = 0;                    // after a failed try, the earliest time for the next one
+var HbSchedStart = 0;                   // when this run first asked: its start, whatever the loop does later
 
 function hbScheduledRelogin(var now)
 {
+	if(HbSchedStart == 0) HbSchedStart = now;
+	int action = gwSchedAction(HbSchedStart, now, HbSchedDay, HbSchedNext);
+	if(action == 0) return;
 	int today = (int)floor(now);
-	if(HbSchedDay == today) return;
-	var due = today + (gwRestartUtcMinute(now) + HB_SCHED_AFTER_MIN) / 1440.;
-	if(HbSchedDay == 0 && now > due) { HbSchedDay = today; return; }    // started after the restart: the start logged in
-	if(now < due || now < HbSchedNext) return;
+	if(action == 1) { HbSchedDay = today; return; }     // started after the restart: the start logged in
 	printf("\nGateway restarted: logging in again");
 	login(4);
 	int ok = login(1);
