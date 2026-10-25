@@ -20,11 +20,12 @@
 // trades stay. It runs after HB_RELOGIN_MIN real minutes with at most 1 quote a minute while the market is open, and
 // again each HB_RELOGIN_MIN minutes until quotes come back. A disconnected sleeve still gets a quote now and then (one
 // a reconnect attempt), and a healthy one gets at least 5 a minute. Each attempt is a line in Log\Relogin_<Script>.csv.
-// The Gateway's nightly restart (22:05 UK local) drops every API connection, and the plugin does not get it back by
+// The Gateway's nightly restart (17:05 New York time, GatewayClock.h) drops every API connection, and the plugin does not get it back by
 // itself, although the Gateway is up again after 15 seconds (2026-10-22: no sleeve held a connection 15 minutes later).
 // During the halt that follows, IB sends the same settlement price about 97 times a minute, so the dead-feed test above
 // cannot see it. hbScheduledRelogin() therefore logs in again once a night, HB_SCHED_AFTER_MIN minutes after the restart,
 // whatever the market does.
+#include "GatewayClock.h"
 #include "StateExport.h"
 #include "PriceGate.h"
 #include "PoolSync.h"
@@ -64,7 +65,7 @@ char HbReloginFile[80];
 
 // Globex open and, for a sleeve with its own session (BR_MARKET: NoiseAreaNQ, BarZone UTC), inside StartMarket..EndMarket:
 // out of its session Zorro passes it no quotes, connected or not, so a dead connection cannot be told from the
-// quiet there. The Gateway restarts at 21:05 UTC, after that session ended, so the window opens HB_SESSION_LEAD_MIN
+// quiet there. The Gateway restarts at 21:05 or 22:05 UTC, after that session ended, so the window opens HB_SESSION_LEAD_MIN
 // before StartMarket: the quiet then counts as a dead feed and the relogin fires before the first bar. It runs on
 // every session day and does no harm to a healthy connection (open trades stay).
 #define HB_SESSION_LEAD_MIN 15
@@ -80,23 +81,6 @@ int hbMarketOpen(var utc)
 	return 1;
 }
 
-// UK local time is UTC+1 from 01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of October.
-var hbLastSunday(int y, int month)      // the last Sunday before the 1st of the next month
-{
-	var d1 = dmy(y * 10000 + (month + 1) * 100 + 1);
-	int back = ((int)floor(d1) + 6) % 7;
-	if(back == 0) back = 7;
-	return d1 - back;
-}
-
-var hbUkOffsetHours(var utc)
-{
-	int y = ymd(utc) / 10000;
-	if(utc >= hbLastSunday(y, 3) + 1. / 24 && utc < hbLastSunday(y, 10) + 1. / 24) return 1;
-	return 0;
-}
-
-#define HB_GATEWAY_RESTART_MIN (22 * 60 + 5)    // ares/gateway_logins.json restart_time_local of the paper login
 #define HB_SCHED_AFTER_MIN 3
 #define HB_SCHED_RETRY_MIN 2
 #define HB_SCHED_TRIES 5                // after that hbRelogin() is the fallback
@@ -108,7 +92,7 @@ function hbScheduledRelogin(var now)
 {
 	int today = (int)floor(now);
 	if(HbSchedDay == today) return;
-	var due = today + (HB_GATEWAY_RESTART_MIN + HB_SCHED_AFTER_MIN) / 1440. - hbUkOffsetHours(now) / 24.;
+	var due = today + (gwRestartUtcMinute(now) + HB_SCHED_AFTER_MIN) / 1440.;
 	if(HbSchedDay == 0 && now > due) { HbSchedDay = today; return; }    // started after the restart: the start logged in
 	if(now < due || now < HbSchedNext) return;
 	printf("\nGateway restarted: logging in again");
