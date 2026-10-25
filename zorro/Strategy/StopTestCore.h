@@ -41,7 +41,9 @@ function run()
 {
 	BarPeriod = 1;
 	LookBack = 0;
-	Hedge = TEST_HEDGE;          // 0 as the sleeves (CloseTest.c keeps 4, the mode the sleeves ran until 2026-10-20)
+	BarMode = 0;                 // as the sleeves: trade whenever the broker has prices. The default week (Sunday 23:00 UTC to Friday 20:00 UTC)
+	                             // is the winter Globex week; in summer time the test waited an hour for a market that was open (2026-10-25)
+	Hedge = TEST_HEDGE;        // 0 as the sleeves (CloseTest.c keeps 4, the mode the sleeves ran until 2026-10-20)
 #ifndef TEST_NO_NFA
 	nfaOn();                     // as the sleeves since 10-19
 #endif
