@@ -23,6 +23,7 @@
 //   min(Lower, VWAP); then the entry rule is applied again at the same check. Flat at the 16:00 close.
 //   Live only: on a session where a bar loaded before the start had no volume (IB's history bars carry none),
 //   the VWAP is not known, and the exit is the opposite band until the close (long below Lower, short above Upper).
+//   Live only: a session whose first bar starts at 09:31 (the 09:30 bar missing) still counts, with that bar's open.
 //   1x notional (or NA_LOTS lots), cost NA_COST per lot round trip.
 //
 // Why VWAP is computed here: NoiseArea.c reads it from a second asset (QQQVW). A shuffled-price reality check
@@ -32,6 +33,7 @@
 #define LOOKBACK_SESSIONS 14
 #define NBARS 390          // 1-minute bars, 09:30 -> 16:00 ET
 #define DONE_IDX 385       // a session counts only if it has a bar starting 15:55 or later
+#define NA_LIVE_LATE_IDX 1 // live only: a session counts if its first bar starts 09:31 or earlier
 #define NOTIONAL 100000
 
 // -d LIVE (trade mode) trades QQQ shares on the paper account. The 14-session state is rebuilt on every start from
@@ -200,7 +202,15 @@ function run()
 		CurDate = today;
 		DayOpen = priceOpen(0);
 		DayFactor = factor;
+#ifdef SIM
 		StartOk = (idx == 0);
+#else
+		// Live, the first session after a start loses its 09:30 bar (10-19, 10-26: the first live bar closed a minute
+		// late and Zorro made no 09:31 bar). Without the bar the session never entered the lookback, so the next day ran
+		// on the close and the 14 sessions before it. A first bar at 09:31 opens the day instead: its open is one minute
+		// late, and the missing minute's move stays 0, as it would with that open.
+		StartOk = (idx <= NA_LIVE_LATE_IDX);
+#endif
 		LastIdx = -1;
 		Pos = 0;
 		CumPV = 0;
